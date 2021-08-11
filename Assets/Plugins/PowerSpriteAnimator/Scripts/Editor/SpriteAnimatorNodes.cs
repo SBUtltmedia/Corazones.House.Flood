@@ -1,4 +1,4 @@
-﻿//-----------------------------------------
+//-----------------------------------------
 //          PowerSprite Animator
 //  Copyright © 2017 Powerhoof Pty Ltd
 //			  powerhoof.com
@@ -498,13 +498,8 @@ public partial class SpriteAnimator
 		{
 			DeleteNodeAllFrames(m_selectedNode);
 		}
-
-		
-		#if UNITY_2019_1_OR_NEWER
+				
 		width = 125;
-		#else 
-		width = 105;
-		#endif
 		xOffset -= width + 5;
 		GUI.enabled = frameHasNode;
 		if ( GUI.Button(new Rect(xOffset,2, width,rect.height-4), "Clear Frame Offset", EditorStyles.miniButton) )

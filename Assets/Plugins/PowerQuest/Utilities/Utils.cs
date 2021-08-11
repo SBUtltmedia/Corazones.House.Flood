@@ -369,6 +369,31 @@ public class Utils
 		if ( Debug.isDebugBuild ) Debug.LogWarning ("Failed to parse enum "+str+" from " + typeof(tEnum).ToString());
 		return default(tEnum);
 	}
+	
+	// Random direction vector within the two angles specified in degrees
+	public static Vector2 RandomDirection(float minAngle = 0, float maxAngle = 360)
+	{
+		float theta = Random.Range(minAngle,maxAngle) * Mathf.Deg2Rad;
+		return new Vector2(Mathf.Cos(theta),Mathf.Sin(theta));
+	}
+	
+	/// Random point in a circle
+	public static Vector2 RandomPointInCircle( float radius )
+	{
+		// Explanation: https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly/5837686#5837686
+		radius = Mathf.Sqrt(Random.value) * radius;
+		float theta = Random.value*Mathf.PI*2.0f;		
+		return new Vector2(radius*Mathf.Cos(theta),radius*Mathf.Sin(theta));
+	}
+	
+	/// Random point in circle with options to have a minimum radius, and only a segment of an angle. NB: No error checking so garbage in = garbage out.
+	public static Vector2 RandomPointInCircle( float minRadius, float maxRadius, float minAngle = 0, float maxAngle = 360 )
+	{
+		// Explanation: https://stackoverflow.com/questions/5837572/generate-a-random-point-within-a-circle-uniformly/5837686#5837686
+		float r = Mathf.Sqrt(Random.Range(Mathf.Pow(minRadius/maxRadius,2),1))*maxRadius;
+		float theta = Random.Range(minAngle,maxAngle) * Mathf.Deg2Rad;
+		return new Vector2(r*Mathf.Cos(theta),r*Mathf.Sin(theta));
+	}
 }
 
 public static class ExtentionMethods
@@ -387,6 +412,8 @@ public static class ExtentionMethods
 		return str.ToEnum<tEnum>().Equals(toCompare);
 	}
 	*/
+
+	
 
 	public static Rect Encapsulate( this Rect rect, Rect other )
 	{
@@ -1516,8 +1543,7 @@ public struct RectCentered
 		m_max.x = Mathf.Max(m_max.x, rect.Max.x);
 		m_max.y = Mathf.Max(m_max.y, rect.Max.y);			
 	}
-
-
+	
 }
 
 

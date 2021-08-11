@@ -49,23 +49,23 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_data:
-    m_description: Dave
+    m_description: New Character
     m_cursor: 
-    m_room: Home
-    m_position: {x: -301, y: -173}
-    m_faceDirection: 1
-    m_clickable: 0
+    m_room: 
+    m_position: {x: 0, y: 0}
+    m_faceDirection: 2
+    m_clickable: 1
     m_visible: 1
+    m_inventory: []
+    m_walkSpeed: {x: 50, y: 50}
     m_moveable: 1
-    m_inventory:
-    - m_name: CellPhone
-      m_quantity: 1
-    m_walkSpeed: {x: 200, y: 200}
+    m_solid: 0
+    m_solidSize: {x: 20, y: 4}
     m_turnBeforeWalking: 1
     m_turnBeforeFacing: 1
     m_turnSpeedFPS: 12
     m_adjustSpeedWithScaling: 1
-    m_textColour: {r: 0.85098046, g: 0.34117648, b: 0.38823533, a: 1}
+    m_textColour: {r: 1, g: 1, b: 1, a: 1}
     m_animIdle: Idle
     m_animWalk: Walk
     m_animTalk: Talk
@@ -74,24 +74,16 @@ MonoBehaviour:
     m_useRegionScaling: 1
     m_LipSyncEnabled: 0
     m_footstepSound: 
-    m_baseline: -14
-    m_walkToPoint: {x: 0, y: 135}
-    m_lookAtPoint: {x: 0, y: 135}
-    m_scriptName: Dave
-    m_scriptClass: CharacterDave
+    m_useSpriteAsHotspot: 0
+    m_baseline: 0
+    m_walkToPoint: {x: 0, y: 0}
+    m_lookAtPoint: {x: 0, y: 0}
+    m_scriptName: New
+    m_scriptClass: CharacterNew
   m_clickableColliders: []
   m_turnAnims: []
   m_transitionAnims: []
-  m_animations:
-  - {fileID: 7400000, guid: ed06e4bea69a18c46bead52480222fd6, type: 2}
-  - {fileID: 7400000, guid: f4f1f74bc6279a5468a88bb1c9d16307, type: 2}
-  - {fileID: 7400000, guid: 7caab760277841e4c9040c2ac8d629e4, type: 2}
-  - {fileID: 7400000, guid: de3786316bbcb7944ba2837a712ecbf8, type: 2}
-  - {fileID: 7400000, guid: ade078bb42e92124ebd002eb357306ef, type: 2}
-  - {fileID: 7400000, guid: 2ca649a5d8c369e4fb7364562408007e, type: 2}
-  - {fileID: 7400000, guid: 1f02d949641269547bb95af63aee4617, type: 2}
-  - {fileID: 7400000, guid: 7c601a98aecc36941bd42cc8724fe369, type: 2}
-  - {fileID: 7400000, guid: a9a81f8bc6b1a204e8c100c5fdfae5ba, type: 2}
+  m_animations: []
 --- !u!60 &60411324518888156
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -186,7 +178,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_tint: {r: 1, g: 1, b: 1, a: 0}
   m_outline: {r: 1, g: 1, b: 1, a: 0}
-  m_offset: {x: -0, y: 135}
+  m_offset: {x: 0, y: 0}
   m_shaderOverride: {fileID: 0}
 --- !u!95 &95575645197976436
 Animator:

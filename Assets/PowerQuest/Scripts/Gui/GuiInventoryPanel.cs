@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.EventSystems;
@@ -38,7 +38,10 @@ public class GuiInventoryPanel : MonoBehaviour
 
 	GuiInventoryPanelItems m_items = new GuiInventoryPanelItems();
 
-	int m_itemOffset = 0; // Todo - allow scrolling of items obviously.	
+	// holds the last collected item to check if the inventory needs to be scrolled.
+	static Character.CollectedItem m_lastCollectedItem = null;
+
+	static int m_itemOffset = 0; // Todo - allow scrolling of items obviously.	
 
 	public void ScrollReset()
 	{
@@ -66,6 +69,14 @@ public class GuiInventoryPanel : MonoBehaviour
 	{
 		Character character = GetCharacter();
 		List<Character.CollectedItem> inventory = character.GetInventory();
+
+		if (inventory.Count > 0 && inventory[inventory.Count-1] != m_lastCollectedItem)
+		{
+			if (GetCharacter().GetInventoryItemCount() > m_maxVisibleItems)
+				m_itemOffset = ((int)GetCharacter().GetInventoryItemCount() / m_maxVisibleItems) * m_scrollDistance;
+			// take note of the last collected item
+			m_lastCollectedItem = inventory[inventory.Count-1];
+		}
 
 		// add to end if not enough
 		while ( m_items.Count < inventory.Count-m_itemOffset && m_items.Count < m_maxVisibleItems )
@@ -105,7 +116,7 @@ public class GuiInventoryPanel : MonoBehaviour
 				guiItem.m_itemData = inventoryItem;				
 				guiItem.m_obj.GetComponent<InventoryComponent>().SetData(inventoryItem);
 			}
-			if ( guiItem.m_sprite.ClipName != inventoryItem.AnimGui )
+			if ( guiItem != null && guiItem.m_sprite != null && guiItem.m_sprite.ClipName != inventoryItem.AnimGui )
 			{
 				AnimationClip anim =  PowerQuest.Get.GetInventoryAnimation( inventoryItem.AnimGui );
 				if ( anim == null )

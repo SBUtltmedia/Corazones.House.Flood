@@ -1,11 +1,15 @@
-﻿using UnityEngine;
+//#define RUNTIME_CSV_IMPORT_ENABLED // Uncomment to enable, and also move CSVFile.dll from '/ThirdPary/Editor/' directory into '/ThirdParty/' directory, and tick the "Any Platform" tickbox on it's settings.
+
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using PowerTools;
+#if RUNTIME_CSV_IMPORT_ENABLED
+using System.IO;
+#endif
 
 namespace PowerTools.Quest
 {
-
 
 [System.Serializable]
 public class TextData
@@ -73,7 +77,7 @@ public class SystemText : PowerTools.Singleton<SystemText>
 		return GetDisplayText(defaultText, id, characterName);
 	}
 
-	public static string GetDisplayText(string defaultText, int id = -1, string characterName = null)
+	public static string GetDisplayText(string defaultText, int id = -1, string characterName = null, bool isPlayer = false)
 	{
 		if ( m_instance == null || defaultText == null )
 			return defaultText;
@@ -93,6 +97,22 @@ public class SystemText : PowerTools.Singleton<SystemText>
 		{
 			// Otherwise find the string in the character data. If character's null it could be a "Display" string
 			data = m_instance.FindTextDataInternal(id, characterName);
+			if (isPlayer) 
+			{
+				// If scripts have mixed refences for dialogs for the main character, like
+				// "Dave: ", "Player: ", "Plr: ", etc, and the current character is the player,
+				// we may find the wrong string due to overlapping ids.
+				// We check the original string matches and try some fallbacks...
+				if (data?.m_string != defaultText)
+					data = m_instance.FindTextDataInternal(id, "Player");
+				if (data?.m_string != defaultText)
+					data = m_instance.FindTextDataInternal(id, "Plr");
+				if (data?.m_string != defaultText)
+					data = m_instance.FindTextDataInternal(id, "Ego");
+			}
+			// a translation has been found but it's for "someone else". Erase it.
+			if (data?.m_string != defaultText)
+				data = null;
 		}
 
 		if ( data == null )
@@ -356,9 +376,111 @@ public class SystemText : PowerTools.Singleton<SystemText>
 				}
 			}
 		}
-
 	}
 
+	#if RUNTIME_CSV_IMPORT_ENABLED
+	static readonly int CSV_NUM_HEADERS = 4;
+	static readonly int CSV_INDEX_LANGUAGES = CSV_NUM_HEADERS;
+
+	// Import CSV translation file, returns true for success.
+	public bool ImportFromCSV(string scriptPath, out string resultMessage)
+	{
+		bool result = false;
+		resultMessage = null;
+
+		if ( string.IsNullOrEmpty(scriptPath) )
+		{
+			resultMessage = "Invalid Path";
+			return result;
+		}
+
+		int lineId = -1;
+		int numLanguages = GetNumLanguages();
+
+		// Using CSV-Reader https://github.com/tspence/csharp-csv-reader
+
+		FileStream stream = null;
+		StreamReader streamReader = null;
+
+		try
+		{
+			stream = File.OpenRead(scriptPath);
+			streamReader = new StreamReader(stream, System.Text.Encoding.Default);
+
+			using ( CSVFile.CSVReader reader = new CSVFile.CSVReader(streamReader, new CSVFile.CSVSettings() { HeaderRowIncluded = false }) )
+			{
+				foreach ( string[] line in reader )
+				{
+					++lineId;
+					if ( lineId == 0 )
+					{
+						// Check for expected languages
+						if ( line.Length < CSV_NUM_HEADERS + numLanguages )
+						{
+							string error = "Import failed, unexpected columns:\nFound: ";
+							for ( int i = 0; i < line.Length; ++i )
+								error += line[i] + ", ";
+							error += "\nExpected: "
+								  + "Character,ID,File,Context";
+							foreach (LanguageData language in GetLanguages())
+								error+=","+language.m_description;
+							resultMessage = error;
+							break;
+						}
+						continue;
+					}
+					if ( line.Length < CSV_NUM_HEADERS+1 )
+						continue; // skipping line, since it doesn't have the right amount of stuff
+					string character = line[0];
+					int id = -1;
+					if ( int.TryParse(line[1], out id) == false )
+						id = -1;
+					string defaultText = line[CSV_INDEX_LANGUAGES];
+
+					// Find the line
+					TextData textData = EditorFindText(defaultText, id, character );
+					if ( textData == null )
+					{
+						Debug.Log("Failed to import line (not found in text system): "+character+id+": "+defaultText);
+					}
+					else if ( numLanguages > 1 )
+					{
+						// Import other languages
+						textData.m_translations = new string[numLanguages-1];
+						for ( int i = 1; i < numLanguages && CSV_INDEX_LANGUAGES+i < line.Length; ++i)
+						{
+							textData.m_translations[i-1] = line[CSV_INDEX_LANGUAGES+i];
+						}
+					}
+
+					textData.m_changedSinceImport = false;
+					
+				}
+			}
+
+		}
+		catch (System.IO.IOException e )
+		{
+			result = false;
+			resultMessage = "Failed to open CSV file. \nCheck it's not already open elsewhere.\n\nError: "+e.Message;
+		}
+		catch (System.Exception e)
+		{	
+			result = false;
+			resultMessage = "Failed to import CSV file.\n\nError: "+e.Message;
+		}
+		finally
+		{
+			if ( streamReader != null )
+				streamReader.Close();
+			if ( stream != null )
+				stream.Close();
+		}
+		
+		result = true;
+		return result;
+	}
+	#endif
 	
 }
 

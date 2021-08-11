@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -27,11 +27,19 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		public string m_name = string.Empty; // String rather than reference to make saving/loading easy
 		public float m_quantity = 1; // Why a float? Well, maybe you have half a cup of water, I don't know!
 	}
+	[System.Serializable]
+	public class FaceCharacterData
+	{		
+		public string m_character = string.Empty;
+		public float m_minTime = 0;
+		public float m_maxTime = 0;
+		public float m_timer = 0;
+	}
 
+	// The animation state of the character. Note they could be talking, walking and animating at the same time. But only playing 1 animation, indicated by this state
 	public enum eState
 	{
 		Idle,
-		Turn,
 		Walk,
 		Talk,
 		Animate,
@@ -56,21 +64,30 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	[SerializeField] string m_description = "New Character";
 	[Tooltip("If set, changes the name of the cursor when moused over")]
 	[SerializeField] string m_cursor = null;
+
 	[Header("Starting Room, Position, etc")]
 	[SerializeField] string m_room = null;
 	[SerializeField] Vector2 m_position = Vector2.zero;
 	[SerializeField] eFace m_faceDirection = eFace.Down;
-	[SerializeField] bool m_clickable = true;	// Whether character is clickable/can be interacted with
-	[SerializeField] bool m_visible = true;		// Whether character sprites are visible
-	[SerializeField] bool m_moveable = true;	// Whether character can walk
+	[Tooltip("Whether character is clickable/can be interacted with")]
+	[SerializeField] bool m_clickable = true; 
+	[Tooltip("Whether character sprites are visible")]
+	[SerializeField] bool m_visible = true;
 	[SerializeField] List<CollectedItem> m_inventory = new List<CollectedItem>();
+
 	[Header("Movement Defaults")]
 	[SerializeField] Vector2 m_walkSpeed = new Vector2(50,50);
+	[SerializeField] bool m_moveable = true;    // Whether character can walk
+	[Tooltip("If true, this character will walk around other characters marked as solid (Using their Solid Size)")]
+	[SerializeField] bool m_solid = false;
+	[Tooltip("Width & height of rectangle for other characters to pathfind around, centered on character pivot")]
+	[SerializeField] Vector2 m_solidSize = new Vector2(20,4);
 	[SerializeField] bool m_turnBeforeWalking = true;
 	[SerializeField] bool m_turnBeforeFacing = true;
 	[Tooltip("How fast character turns (Frames per second)")]
 	[SerializeField] float m_turnSpeedFPS = 12;
 	[SerializeField] bool m_adjustSpeedWithScaling = true;
+
 	[Header("Visuals Setup")]
 	[SerializeField] Color m_textColour = Color.white;
 	[SerializeField] string m_animIdle = "Idle";
@@ -87,6 +104,8 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	[SerializeField] string m_footstepSound = string.Empty;
 
 	[Header("Other Settings")]
+	[Tooltip("Whether clickable collider shape is taken from the sprite")]
+	[SerializeField] bool m_useSpriteAsHotspot = false;
 	[SerializeField] float m_baseline = 0;
 	[SerializeField] Vector2 m_walkToPoint = Vector2.zero;
 	[SerializeField] Vector2 m_lookAtPoint = Vector2.zero;
@@ -118,21 +137,39 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	eFace m_facingVerticalFallback = eFace.Right; // Should only be Left or Right- Used if there's no up/down frames to choose whether R or L anim is used
 	
 	eFace m_faceAfterWalk = eFace.None; // used for face after walking in background
-
+	
 	QuestText m_dialogText = null;
 
 	AudioHandle m_dialogAudioSource = null;
 
-	string m_lastRoom = null;
-
+	string m_lastRoom = null;	
+	
 	Vector2 m_textPositionOverride = Vector2.zero;
-
 	int m_clickableColliderId = 0;
 
 	IEnumerator m_coroutineSay = null;
 
 	int m_useCount = 0;
 	int m_lookCount = 0;
+
+	// Used when character is enabled/disabled.
+	bool m_enabled = true;
+
+	// When character is enabled/disabled, these are used to remember what old visible/clickable/etc were.
+	bool m_visibleWhenEnabled = true;
+	bool m_clickableWhenEnabled = true;
+	bool m_solidWhenEnabled = false;
+
+	string m_animOverride = null; // Used when Animation property is set	
+	bool m_pauseAnimAtEnd = false; // If true, animation (from PlayAnimation()) will pause on last frame and not return to Idle (Until StopAnimation is called).
+	float m_animationTime = -1; // Normalised time of current animation, cached here for save/loading from/to animations
+	float m_loopStartTime = -1; // whether a loop tag was hit, and at what time
+	float m_loopEndTime = -1;   // whether a loop end tag was hit, and at what time
+	
+	List<Vector2> m_waypoints = new List<Vector2>();
+
+	// Variables for facing characters
+	FaceCharacterData m_faceChar = null;
 
 	#endregion
 	#region Properties
@@ -152,23 +189,24 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		// TODO: Cache the room so dont' have to look it up each call
 		get { return PowerQuest.Get.GetRoom(m_room); } 
 		set
-		{ 
-			
+		{
 			string oldRoom = m_room;
-			m_room = value.ScriptName; 
-			if ( oldRoom == m_room )
+			m_room = value?.ScriptName ?? null; 
+			
+			string currRoom = PowerQuest.Get.GetCurrentRoom().ScriptName;
+
+			if ( oldRoom == m_room && (IsPlayer== false || m_room == currRoom))
 				return;
 
 			m_lastRoom = oldRoom;
 
-			string currRoom = PowerQuest.Get.GetCurrentRoom().ScriptName;
 
 			// Add/remove instance of character if it's the current room that effected. 
 			if ( currRoom == oldRoom )
 			{
 
 				// Handle the player changing rooms (should trigger scene change)
-				if ( PowerQuest.Get.GetPlayer() == this )
+				if ( IsPlayer )
 				{		
 					PowerQuest.Get.StartRoomTransition(value.Data);
 				}
@@ -185,6 +223,11 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 				// Player has entered the current room, add them to the scene
 				SpawnInstance();
 			}	
+			else if ( currRoom != m_room && IsPlayer && PowerQuest.Get.GetRestoringGame() == false )
+			{
+				// Player must have changed, so move to their room.
+				PowerQuest.Get.StartRoomTransition(value.Data);
+			}
 		}	
 	}
 
@@ -203,22 +246,21 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 			#endif
 		}
 		else 
+		{
 			Room = room; 
-
-
-		
+		}		
 	}
 
 	// Returns the last room visited before the current one
 	public IRoom LastRoom { get { return PowerQuest.Get.GetRoom(m_lastRoom); } }
 
 	public Vector2 Position{ get{return m_position;} set {SetPosition(value);} }
-	public Vector2 TargetPosition{ get
-	{
+	public Vector2 TargetPosition { get {
 		if ( m_instance != null )
 			return m_instance.GetTargetPosition();
 		return m_position;
 	} }
+	public List<Vector2> Waypoints { get { return m_waypoints; } }
 
 	public float Baseline { get{return m_baseline;} set{m_baseline = value;} }
 	public Vector2 WalkSpeed { get{ return m_walkSpeed; } set { m_walkSpeed = value; } }
@@ -242,54 +284,182 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 				m_instance.UpdateFacingVisuals(value); 
 		} 
 	}
-	public bool Clickable { get{return m_clickable && GetHiddenInRoom() == false;} set{m_clickable = value;} }
-	public bool Visible 
-	{ 
-		get{return m_visible && GetHiddenInRoom() == false;} 
+	
+
+	public bool Enabled 
+	{
+		get 
+		{ 
+			return m_enabled 
+				&& (IsPlayer == false || PowerQuest.Get.GetCurrentRoom().PlayerVisible); // Also check if player is off in this room.
+		}
 		set
 		{
+			m_enabled = value;
+			if ( m_instance != null ) 
+				m_instance.UpdateEnabled();
+		}
+	}
+
+	public bool Clickable 
+	{ 
+		get	{ return m_clickable && Enabled; } 
+		set
+		{		
+			if ( value && m_enabled == false )
+				Debug.LogWarning("Character Clickable set when Character is not Enabled. Did you mean to call Show() or Enable() first?");
+			m_clickableWhenEnabled = value; 
+			m_clickable = value;
+		} 
+	}
+
+	public bool Visible 
+	{ 
+		get	{ return m_visible && Enabled; } 
+		set
+		{
+			if ( value && m_enabled == false )
+				Debug.LogWarning("Character Visible set when Character is not Enabled. Did you mean to call Show() or Enable() first?");
+			m_visibleWhenEnabled = value;
 			m_visible = value;
-			if ( m_instance )
-			{
+			if ( m_instance != null )
 				m_instance.UpdateVisibility();
-				/*
-				bool shouldShow = m_visible && GetHiddenInRoom() == false;
-				if ( m_instance.GetSpriteAnimator() != null )
-					m_instance.GetSpriteAnimator().enabled = shouldShow;
-				
-				Renderer[] renderers = m_instance.GetComponentsInChildren<Renderer>(true);
-				System.Array.ForEach(renderers, renderer => 
-					{
-						renderer.enabled = shouldShow;
-					});
-					*/
-			}
 		} 
 	}
 	
+	// Whether the player is *Actually* visible in the room. (ie: their visible flag is true, and they're also in the room, and enabled)
 	public bool VisibleInRoom {  get { return Visible && Room != null && Room.Current; } }
 
-	/// Set's visible & clickable (same as `Enable()`)
-	public void Show( bool clickable = true ) { Enable( clickable ); }
-	/// Set's invisible & non-clickable (same as `Disable()`)
-	public void Hide() { Disable(); }
-	/// Set's visible & clickable
-	public void Enable( bool clickable = true )
+	public bool Solid
 	{
+		get { return m_solid && Enabled; }
+		set 
+		{
+			if ( m_solid != value )
+			{
+				m_solid = value;
+				m_solidWhenEnabled = value;
+				if ( m_instance != null )
+					m_instance.UpdateSolid();
+			}
+		}
+	}
+	public Vector2 SolidSize
+	{
+		get { return m_solidSize; }
+		set 
+		{
+			if ( (m_solidSize-value).sqrMagnitude > float.Epsilon )
+			{
+				m_solidSize = value;
+				if ( m_instance != null )
+					m_instance.UpdateSolidSize();
+			}
+		}
+	}
+
+	public bool UseSpriteAsHotspot
+	{
+		get { return m_useSpriteAsHotspot; }
+		set
+		{
+			if ( value == m_useSpriteAsHotspot )
+				return;
+			m_useSpriteAsHotspot = value;
+			if ( m_instance != null )
+				m_instance.UpdateUseSpriteAsHotspot();
+		}
+	}
+		
+	/// Shows the character again after a call to Hide(), moving them to current room, and forcing Visible to true.
+	/// This maintains its old Clickable and Solid properties (Unlike Show/Hide functions). 
+	/// You can optionally pass in a position or face direction. If not passed no change will be made.
+	/// The Enable() function is similar, but doesn't set Visible to true, or move them to the current room.
+	/// \sa Hide() \sa Disable() \sa Enable()
+	public void Show( float posX, float posy, eFace facing = eFace.None ) { Show(new Vector2(posX,posy),facing); }
+	public void Show( eFace facing ) { Show(Vector2.zero,facing); }
+	public void Show( Vector2 pos = new Vector2(), eFace facing = eFace.None )
+	{
+		/*
+		bool wasVisible = m_visible;
+		bool wasClickable = m_clickable;
+		
+		if ( m_solidWhenEnabled )
+			Solid = true;
+		if (m_visibleWhenEnabled)
+			Visible = true;
+		if ( m_clickableWhenEnabled)
+			Clickable = true;
+		*/
+		Enabled = true;
 		Visible = true;
-		Clickable = clickable;
+
+		if ( pos != Vector2.zero )
+			Position = pos;
+		if ( facing != eFace.None )
+			Facing = facing;
+
 		// Change character to be in current room
 		Room = PowerQuest.Get.GetCurrentRoom();
 	}
-	/// Set's invisible & non-clickable
-	public void Disable() { Visible = false; Clickable = false; }
 
-	public bool Moveable { get{return m_moveable && GetHiddenInRoom() == false;} set{m_moveable = value;} }
-	public bool Walking { get{ return m_instance == null ? false : m_instance.GetIsWalking(); } }
+	/// Obsolete: Set's visible & clickable, and changes them to the current room (if they weren't there already)
+	public void Show( bool clickable ) { Enable( clickable ); }
+	/// Obsolete: Set's visible & clickable, and changes them to the current room (if they weren't there already)
+	public void Enable( bool clickable )
+	{
+		Enabled = true;
+		Visible = true;
+		Clickable = clickable;
+		/*
+		Visible = true;
+		Clickable = clickable;
+		if ( m_solidWhenEnabled )
+			Solid = true;
+		*/
+		// Change character to be in current room
+		Room = PowerQuest.Get.GetCurrentRoom();
+	}
+
+	/// Disables the character (sets them non-visible, clickable, solid, movable).  (same as `Disable()`)
+	public void Hide() { Disable(); }
+
+	public void Enable()
+	{
+		Enabled = true;
+	}
+
+	/// Set's invisible, non-clickable, and non-solid
+	public void Disable() 
+	{
+		Enabled = false;		
+
+		/* Testing other bits
+		if ( m_visible )
+		{
+		Visible = false; 
+			m_visibleWhenEnabled = true;
+		}
+		if ( m_clickable )
+		{
+		Clickable = false; 
+			m_clickableWhenEnabled = true;
+		}
+		if ( m_solid )
+		{
+			Solid = false; 
+			m_solidWhenEnabled = true;
+		}
+		*/
+	}
+
+	public bool Moveable { get{return m_moveable && Enabled;} set{m_moveable = value;} }
+	public bool Walking { get{ return m_instance == null ? false : m_instance.Walking; } }
 	public bool Talking { get{ return (m_dialogText != null && m_dialogText.gameObject.activeSelf) || (m_dialogAudioSource != null && m_dialogAudioSource.isPlaying); /*return m_instance == null ? false : m_instance.GetIsTalking();*/ } }
-	public bool Animating { get{ return m_instance == null ? false : m_instance.GetState() == eState.Animate; } }
+	// Returns true if currently playing an anim (using PlayAnimation, or Animation = xxx)
+	public bool Animating { get{ return m_instance == null ? false : m_instance.Animating; } }
 	public bool IsPlayer { get{ return PowerQuest.Get.GetPlayer() == this; } }
-
+	
 	public Color TextColour 
 	{ 
 		get { return m_textColour;} 
@@ -356,7 +526,8 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		set { m_footstepSound = value; }
 	}
 
-	// Returns true if currently playing an anim (using playAnimation, not an idle/walk/talk)
+	
+	// The animation state of the character. Note they could be talking, walking and animating at the same time. But only playing 1 animation, indicated by this state
 	public eState State { get { return ( m_instance != null ) ? (m_instance.GetState()) : eState.None; } }
 
 	// The currently selected inventory item
@@ -385,6 +556,13 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	//public bool WalkToSymmetrical { get{ return m_walkToSymmetrical ;} set{m_walkToSymmetrical = value;} }
 
 	public Vector2 TextPositionOverride { get{ return m_textPositionOverride; } set { m_textPositionOverride = value; } }
+	
+	public void StartFacingCharacter(ICharacter character, float minWaitTime = 0.2f, float maxWaitTime = 0.4f) 
+	{ 
+		m_faceChar = new FaceCharacterData() { m_character = character.ScriptName, m_minTime = minWaitTime, m_maxTime = maxWaitTime, m_timer = Random.Range(minWaitTime,maxWaitTime) };
+	}
+	public void StopFacingCharacter() { m_faceChar = null; }
+
 
 	// Callback when starting to say something. CallbackSay(string dialog, int id)
 	public System.Action<string,int> CallbackOnSay = null;
@@ -409,7 +587,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	// Spawns instance of ths character in the current room. Should only be used by PowerQuest or internally
 	public GameObject SpawnInstance()	
 	{
-		GameObject characterInstance = GameObject.Find(GetPrefab().name);GameObject.Find(GetPrefab().name);
+		GameObject characterInstance = GameObject.Find(GetPrefab().name);
 		if ( characterInstance == null )
 		{
 			characterInstance = GameObject.Instantiate( GetPrefab() ) as GameObject;
@@ -419,24 +597,23 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		Facing = GetFaceDirection();
 		return characterInstance;
 	}
-	public GameObject GetInstance() { return m_instance.gameObject; }
-	public void SetInstance(CharacterComponent instance) 
+	public GameObject GetInstance() { return m_instance?.gameObject??null; }
+	public void SetInstance(CharacterComponent instance)
 	{ 
 		m_instance = instance; 
 		m_instance.SetData(this);
 		m_instance.name = m_prefab.name;
-
-		// Set the clickable collider to enable the correct collision after restoring
-		m_instance.OnClickableColliderIdChanged();
 	}
-	public void SetPosition(float x, float y) { SetPosition(new Vector2(x,y)); }
-	public void SetPosition(Vector2 position) 
+	public void SetPosition(float x, float y, eFace face = eFace.None) { SetPosition(new Vector2(x,y),face); }
+	public void SetPosition(Vector2 position, eFace face = eFace.None) 
 	{ 
 		m_position = position; 
 		if ( m_instance != null )
 		{
 			m_instance.transform.position = Utils.Snap(m_position,PowerQuest.Get.SnapAmount);
 		}
+		if ( face != eFace.None )
+			Facing = face;
 	}
 	public Vector2 GetPosition() { return m_position; }
 
@@ -513,6 +690,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		}
 
 	}
+	
 	public void RemoveInventory( string itemName, float quantity = 1 )
 	{
 		Inventory invItem = PowerQuest.Get.GetInventory(itemName);
@@ -561,7 +739,12 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	public void RemoveInventory( IInventory item, float quantity = 1 ) { RemoveInventory( item?.ScriptName,quantity ); }
 
 	public AudioSource GetDialogAudioSource() { return m_dialogAudioSource; }
-
+		
+	// Properties for CharacterComponent
+	public bool PauseAnimAtEnd { get => m_pauseAnimAtEnd; set => m_pauseAnimAtEnd=value; }	
+	public float AnimationTime { get => m_animationTime; set => m_animationTime=value; }	
+	public float LoopStartTime { get=>m_loopStartTime; set=>m_loopStartTime=value; }
+	public float LoopEndTime { get=>m_loopEndTime; set=>m_loopEndTime=value; }
 
 	#endregion
 	#region Funcs: Init
@@ -584,6 +767,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	}
 	public string EditorGetRoom() { return m_room; }
 	public void EditorSetRoom(string roomName) { m_room = roomName; }
+	public bool EditorGetSolid() { return m_solid; } // Simple flag accessor
 
 	public void OnPostRestore( int version, GameObject prefab )
 	{
@@ -591,8 +775,16 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		if ( m_script == null ) // script could be null if it didn't exist in old save game, but does now.
 			m_script = QuestUtils.ConstructByName<QuestScript>(m_scriptClass);
 
+		/*	NB: The below doesn't work because instance won't have loaded yet.
+		
 		// Set the clickable collider to enable the correct collision after restoring
 		if ( m_instance != null ) m_instance.OnClickableColliderIdChanged();
+		
+		// Start any background animation back up.
+		Animation = m_animOverride;
+		if ( m_instance && m_animationTime > 0 )
+			m_instance.GetSpriteAnimator().NormalizedTime = m_animationTime;		
+		*/
 	}
 
 	public void Initialise( GameObject prefab )
@@ -642,6 +834,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	public void WalkToBG( Vector2 pos, bool anywhere = false, eFace thenFace = eFace.None )
 	{
 		m_faceAfterWalk = thenFace;
+		m_waypoints.Clear();
 		//Debug.Log(GetDescription() + " Walking to "+pos.ToString());	
 			
 		// This stops the sequence being cancellable,  since 'Walking' property is used to check if it's possible to cancel, and BG walking shouldn't be cancelable
@@ -649,9 +842,9 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 
 		if ( Moveable == false )
 			return;
-		if ( m_instance != null && PowerQuest.Get.GetSkipCutscene() == false )
+		if ( m_instance != null && PowerQuest.Get.GetSkippingCutscene() == false )
 		{
-			m_instance.WalkTo(pos, anywhere);
+			m_instance.WalkTo(pos, anywhere,true);
 		}
 		else 
 		{
@@ -662,6 +855,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	public void WalkToBG(IQuestClickableInterface clickable, bool anywhere = false, eFace thenFace = eFace.None)
 	{
 		m_faceAfterWalk = thenFace;
+		m_waypoints.Clear();
 		if ( clickable != null )
 		{			
 			if ( clickable.IClickable.Instance != null )
@@ -675,6 +869,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	public Coroutine WalkTo(IQuestClickableInterface clickable, bool anywhere = false) 
 	{
 		m_faceAfterWalk = eFace.None;
+		m_waypoints.Clear();
 		if ( clickable != null )
 		{
 			if ( clickable.IClickable.Instance !=  null )
@@ -686,14 +881,87 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	}
 	public Coroutine WalkToClicked(bool anywhere = false) {	return PowerQuest.Get.StartCoroutine(CoroutineWalkTo(PowerQuest.Get.GetLastWalkTo(), anywhere)); }
 
+	public Coroutine MoveTo(float x, float y, bool anywhere = false )  { return PowerQuest.Get.StartQuestCoroutine(CoroutineWalkTo(new Vector2(x,y), anywhere,false)); }
+	public Coroutine MoveTo(Vector2 pos, bool anywhere = false )  { return PowerQuest.Get.StartQuestCoroutine(CoroutineWalkTo(pos, anywhere,false)); }
+	public Coroutine MoveTo(IQuestClickableInterface clickable, bool anywhere = false) 
+	{
+		m_faceAfterWalk = eFace.None;
+		m_waypoints.Clear();
+		if ( clickable != null )
+		{
+			if ( clickable.IClickable.Instance !=  null )
+				return PowerQuest.Get.StartQuestCoroutine(CoroutineWalkTo(((Vector2)clickable.IClickable.Instance.transform.position + clickable.IClickable.WalkToPoint), anywhere,false));			
+			else
+				return PowerQuest.Get.StartQuestCoroutine(CoroutineWalkTo(clickable.IClickable.WalkToPoint, anywhere,false));
+		}
+		return null;
+	}
+	public void MoveToBG(float x, float y, bool anywhere = false ) { MoveToBG(new Vector2(x,y), anywhere); }
+	public void MoveToBG(Vector2 pos, bool anywhere = false )
+	{		
+		m_faceAfterWalk = eFace.None;			
+		m_waypoints.Clear();
+		// This stops the sequence being cancellable,  since 'Walking' property is used to check if it's possible to cancel, and BG walking shouldn't be cancelable
+		PowerQuest.Get.DisableCancel();
+
+		if ( Moveable == false )
+			return;
+		if ( m_instance != null && PowerQuest.Get.GetSkippingCutscene() == false )
+		{
+			m_instance.WalkTo(pos, anywhere,false);
+		}
+		else 
+		{
+			SetPosition(pos);
+		}	
+	}	
+	public void MoveToBG(IQuestClickableInterface clickable, bool anywhere = false)
+	{
+		m_faceAfterWalk = eFace.None;
+		m_waypoints.Clear();
+		if ( clickable != null )
+		{			
+			if ( clickable.IClickable.Instance != null )
+				MoveToBG((Vector2)clickable.IClickable.Instance.transform.position + clickable.IClickable.WalkToPoint, anywhere);
+			else
+				MoveToBG(clickable.IClickable.WalkToPoint, anywhere);
+		}
+	}
+
 	// Stops walking on the spot
 	public Coroutine StopWalking() 
 	{ 
 		m_faceAfterWalk = eFace.None; 
+		m_waypoints.Clear();
 		if ( m_instance!= null ) 
 			m_instance.StopWalk(); 
 		return null; 
 	}	
+	
+	public void AddWaypoint(float x, float y, eFace thenFace = eFace.None ) { AddWaypoint(new Vector2(x,y),thenFace); }
+	public void AddWaypoint(Vector2 pos, eFace thenFace = eFace.None)
+	{	
+		m_faceAfterWalk = thenFace;
+		//Debug.Log(GetDescription() + " Walking to "+pos.ToString());	
+			
+		// This stops the sequence being cancellable,  since 'Walking' property is used to check if it's possible to cancel, and BG walking shouldn't be cancelable
+		PowerQuest.Get.DisableCancel();
+		
+		if ( Moveable == false )
+			return;
+
+		if ( m_instance != null && PowerQuest.Get.GetSkippingCutscene() == false )
+		{
+			m_waypoints.Add(pos);
+			if ( m_instance.Walking == false )
+				m_instance.WalkTo(pos, true, true);
+		}
+		else 
+		{
+			SetPosition(pos);
+		}
+
+	}
 	
 	// Non-blocking versions of facing functions
 	public void FaceDownBG(bool instant = false) { Face(eFace.Down, instant); }
@@ -718,7 +986,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	// Face enum direction
 	public Coroutine Face( eFace direction, bool instant = false )
 	{
-		if ( PowerQuest.Get.GetRoomLoading() || PowerQuest.Get.GetSkipCutscene() || m_instance == null || Visible == false )
+		if ( PowerQuest.Get.GetRoomLoading() || PowerQuest.Get.GetSkippingCutscene() || m_instance == null || Visible == false )
 			instant = true;		
 		if ( Walking && m_turnBeforeWalking == false )
 			instant = true;
@@ -755,8 +1023,8 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 
 	public Coroutine FaceUpRight(bool instant = false) { return Face(eFace.UpRight, instant); }
 	public Coroutine FaceUpLeft(bool instant = false) { return Face(eFace.UpLeft, instant); }
-	public Coroutine FaceDownRight(bool instant = false) { return Face(eFace.DownLeft, instant); }
-	public Coroutine FaceDownLeft(bool instant = false) { return Face(eFace.DownRight, instant); }
+	public Coroutine FaceDownRight(bool instant = false) { return Face(eFace.DownRight, instant); }
+	public Coroutine FaceDownLeft(bool instant = false) { return Face(eFace.DownLeft, instant); }
 	
 	public Coroutine Face( IQuestClickableInterface clickable, bool instant = false ) { return Face(clickable.IClickable, instant); }
 	public Coroutine Face( IQuestClickable clickable, bool instant = false )
@@ -856,7 +1124,8 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	}
 
 	public Coroutine PlayAnimation(string animName)
-	{
+	{	
+		ResetAnimationData();
 		if ( m_instance != null ) return PowerQuest.Get.StartCoroutine(CoroutinePlayAnimation(animName)); 
 		return null;
 	}
@@ -867,12 +1136,29 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		return null;
 	}
 
+	public string Animation 
+	{
+		get
+		{
+			return m_animOverride;
+		}
+		set
+		{
+			if ( value == null )
+				StopAnimation();
+			else
+				PlayAnimationBG(value,true);
+		}
+	}
 
 	public void PlayAnimationBG(string animName, bool pauseAtEnd = false )
 	{
-		if ( PowerQuest.Get.GetSkipCutscene() )
+		ResetAnimationData();
+		m_animOverride = animName;
+		m_pauseAnimAtEnd = pauseAtEnd;
+		if ( PowerQuest.Get.GetSkippingCutscene() && pauseAtEnd == false )
 			return;
-		if ( m_instance != null ) m_instance.PlayAnimation(animName, pauseAtEnd); 
+		if ( m_instance != null ) m_instance.PlayAnimation(animName); 
 	}
 
 	public void PauseAnimation()
@@ -887,6 +1173,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 
 	public void StopAnimation()
 	{
+		ResetAnimationData();
 		if ( m_instance != null ) m_instance.StopAnimation();
 	}
 
@@ -925,7 +1212,16 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 				m_instance.OnClickableColliderIdChanged();
 		} 
 	}
-
+	
+	public void UpdateFacingCharacter()
+	{
+		if ( m_faceChar == null || PowerQuest.Get.GetCharacter(m_faceChar.m_character) == null )
+			return;
+		if ( Walking == false && m_targetFaceDirection == m_faceDirection && Utils.GetTimeIncrementPassed(m_faceChar.m_minTime, m_faceChar.m_maxTime, ref m_faceChar.m_timer) )
+		{
+			FaceBG(PowerQuest.Get.GetCharacter(m_faceChar.m_character) as IQuestClickable);
+		}
+	}
 
 	#endregion
 	#region Funcs: Private
@@ -934,23 +1230,25 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	//
 
 
-	IEnumerator CoroutineWalkTo( Vector2 position, bool anywhere = false )
+	IEnumerator CoroutineWalkTo( Vector2 position, bool anywhere, bool playWalkAnim = true )
 	{		
-		m_faceAfterWalk = eFace.None;
-		EndSay();
+		m_faceAfterWalk = eFace.None;			
+		m_waypoints.Clear();
+
+		// EndSay(); // 2021 06 11 - Don't stop talking when start walking anymore.
 
 		if ( Moveable == false )
 			yield break;
 
 		// WalkToBG( position, anywhere ); // can't use walktoBG since that stops the sequence being cancelable
 		{
-			if ( m_instance != null && PowerQuest.Get.GetSkipCutscene() == false )
-				m_instance.WalkTo(position, anywhere);
+			if ( m_instance != null && PowerQuest.Get.GetSkippingCutscene() == false )
+				m_instance.WalkTo(position, anywhere, playWalkAnim );
 			else 
 				SetPosition(position);
 		}		
 
-		if ( PowerQuest.Get.GetSkipCutscene() )
+		if ( PowerQuest.Get.GetSkippingCutscene() )
 		{
 			m_instance.SkipWalk();
 			yield break;
@@ -958,9 +1256,9 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 			
 		bool skip = false;
 		//bool cancel = false;
-		while ( m_instance != null && skip == false && Moveable && m_instance.GetIsWalking() )
+		while ( m_instance != null && skip == false && Moveable && m_instance.Walking )
 		{
-			if ( PowerQuest.Get.GetSkipCutscene() )
+			if ( PowerQuest.Get.GetSkippingCutscene() )
 			{
 				// when walk is skipped, character teleports to location and face direction
 				skip = true;
@@ -979,22 +1277,18 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		yield break;
 	}
 
-	bool GetHiddenInRoom()
-	{
-		return IsPlayer && PowerQuest.Get.GetCurrentRoom().PlayerVisible == false;
-	}
 
 	IEnumerator CoroutineSay(string text, int id = -1)
 	{
-		StopWalking();
-		if ( PowerQuest.Get.GetSkipCutscene() )
+		if ( PowerQuest.Get.GetStopWalkingToTalk() )
+			StopWalking(); 
+		if ( PowerQuest.Get.GetSkippingCutscene() )
 			yield break;
 
 		StartSay( text, id );
 		yield return PowerQuest.Get.WaitForDialog(PowerQuest.Get.GetTextDisplayTime(text), m_dialogAudioSource, PowerQuest.Get.GetShouldSayTextAutoAdvance(), true);		
 		EndSay();
 	}
-
 
 	IEnumerator CoroutineSayBG(string text, int id = -1)
 	{	
@@ -1003,42 +1297,40 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		EndSay();
 	}
 
-
-
 	IEnumerator CoroutinePlayAnimation(string animName)
 	{
 		StopWalking();
 
-		if ( PowerQuest.Get.GetSkipCutscene() )
+		if ( PowerQuest.Get.GetSkippingCutscene() )
 			yield break;
 		
 		if ( m_instance == null ) yield break;
 		m_instance.PlayAnimation(animName);
-		while ( Animating && PowerQuest.Get.GetSkipCutscene() == false )
+		while ( Animating && PowerQuest.Get.GetSkippingCutscene() == false )
 		{				
 			yield return new WaitForEndOfFrame();
 		}
-		if ( m_instance.GetState() == eState.Animate )
+		if ( m_instance.Animating )
 			m_instance.StopAnimation();
 	}
 
 	IEnumerator CoroutineWaitForAnimation()
 	{
-		if ( PowerQuest.Get.GetSkipCutscene() )
+		if ( PowerQuest.Get.GetSkippingCutscene() )
 			yield break;
 
 		if ( m_instance == null ) yield break;
-		while ( m_instance.GetState() == eState.Animate && PowerQuest.Get.GetSkipCutscene() == false )
+		while ( m_instance.Animating && PowerQuest.Get.GetSkippingCutscene() == false )
 		{				
 			yield return new WaitForEndOfFrame();
 		}
-		if ( m_instance.GetState() == eState.Animate )
+		if ( m_instance.Animating )
 			m_instance.StopAnimation();		
 	}
 
 	IEnumerator CoroutineFace(eFace direction)
 	{
-		if ( PowerQuest.Get.GetSkipCutscene() )
+		if ( PowerQuest.Get.GetSkippingCutscene() )
 		{			
 			m_targetFaceDirection = direction;
 			m_instance.UpdateFacingVisuals(direction);
@@ -1046,7 +1338,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 		}
 		bool skip = false;
 
-		if ( m_instance != null && skip == false && Visible && PowerQuest.Get.GetSkipCutscene() == false && PowerQuest.Get.GetRoomLoading() == false )
+		if ( m_instance != null && skip == false && Visible && PowerQuest.Get.GetSkippingCutscene() == false && PowerQuest.Get.GetRoomLoading() == false )
 		{
 			/*if ( m_instance.StartTurnAnimation() )
 			{
@@ -1066,7 +1358,7 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 			}
 			else */
 			{
-				while ( m_instance != null && skip == false && Visible && PowerQuest.Get.GetSkipCutscene() == false && PowerQuest.Get.GetRoomLoading() == false
+				while ( m_instance != null && skip == false && Visible && PowerQuest.Get.GetSkippingCutscene() == false && PowerQuest.Get.GetRoomLoading() == false
 					&& (m_targetFaceDirection != m_faceDirection || m_instance.GetPlayingTurnAnimation()))
 				{
 					yield return new WaitForEndOfFrame();		
@@ -1084,8 +1376,8 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 	{		
 		//Debug.Log(Description() + ": " + line);	
 
-		// Get tranlated string
-		line = SystemText.GetDisplayText(line, id, m_scriptName);
+		// Get translated string
+		line = SystemText.GetDisplayText(line, id, m_scriptName, IsPlayer);
 
 		// Start audio (if enabled)
 		SystemAudio.Stop(m_dialogAudioSource);
@@ -1111,6 +1403,12 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 				{
 					m_dialogText.gameObject.SetActive(true);
 				}
+				
+				// Hack: For customisation, send some messages to the dialog text
+				m_dialogText?.SendMessage("MsgSetCharacter",this, SendMessageOptions.DontRequireReceiver);
+				m_dialogText?.SendMessage("MsgSetText",line, SendMessageOptions.DontRequireReceiver);
+				m_dialogText?.SendMessage("MsgSetDialogId",id, SendMessageOptions.DontRequireReceiver);
+				m_dialogText?.SendMessage("MsgSetBackground",background, SendMessageOptions.DontRequireReceiver);
 
 				// Convert position to gui camera space
 				if( PowerQuest.Get.Settings.SpeechStyle != eSpeechStyle.Caption )
@@ -1167,13 +1465,23 @@ public partial class Character : IQuestClickable, ICharacter, IQuestScriptable
 
 	IEnumerator CoroutineWaitForAnimTrigger(string triggerName)
 	{
-		if ( PowerQuest.Get.GetSkipCutscene() == false )
+		if ( PowerQuest.Get.GetSkippingCutscene() == false )
 		{
 			bool hit = false;
 			AddAnimationTrigger(triggerName,true,()=>hit=true);
 			yield return PowerQuest.Get.WaitUntil(()=> hit || m_instance == null || m_instance.GetSpriteAnimator().Playing == false );
 		}
 		yield break;
+	}
+	
+	// Animation state that's saved. Needs to be reset when playing/stopping animations
+	void ResetAnimationData()
+	{
+		m_animOverride = null;
+		m_animationTime = -1;
+		m_pauseAnimAtEnd = false;
+		m_loopEndTime = -1;
+		m_loopStartTime = -1;
 	}
 
 	#endregion

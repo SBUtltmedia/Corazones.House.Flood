@@ -1,4 +1,4 @@
-﻿//-----------------------------------------
+//-----------------------------------------
 //          PowerSprite Animator
 //  Copyright © 2017 Powerhoof Pty Ltd
 //			  powerhoof.com
@@ -229,6 +229,15 @@ public partial class SpriteAnimator : EditorWindow
 	{
 		//Show existing window instance. If one doesn't exist, make one.
 		EditorWindow.GetWindow(typeof(SpriteAnimator), false, "Power Anim");
+	}
+
+	// Opens the animation editor and loads with the specified clip. Returns the window.
+	public static SpriteAnimator Show(AnimationClip clip)
+	{
+		SpriteAnimator window = EditorWindow.GetWindow(typeof(SpriteAnimator), false, "Power Anim") as SpriteAnimator;
+		if ( window != null )
+			window.OpenClip(clip);
+		return window;
 	}
 
 	public SpriteAnimator()
@@ -1558,6 +1567,12 @@ public partial class SpriteAnimator : EditorWindow
 			m_clip = Selection.activeObject as AnimationClip;
 			OnClipChange();
 		}
+	}
+
+	void OpenClip(AnimationClip clip)
+	{
+		m_clip = clip;
+		OnClipChange();
 	}
 
 	/// Handles selection a single frame on timeline and list, and puts playhead at start

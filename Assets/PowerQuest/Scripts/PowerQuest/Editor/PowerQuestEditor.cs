@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -248,7 +248,7 @@ public partial class PowerQuestEditor : EditorWindow
 	public static void ExportPackage()
 	{
 		AssetDatabase.ExportPackage( new string[] {@"Assets\PowerQuest",@"Assets\Plugins"}, @"..\Packages\PowerQuest.unitypackage", ExportPackageOptions.Recurse);
-	}
+	}	
 	
 	// Function to export the powerQuest package automatically
 	public static void ExportTemplatePackage()
@@ -260,25 +260,36 @@ public partial class PowerQuestEditor : EditorWindow
 		AssetDatabase.ExportPackage( new string[] {@"Assets\Audio", @"Assets\Fonts", @"Assets\Game"}, @"Assets\PowerQuest\Templates\9VerbGameTemplate.unitypackage", ExportPackageOptions.Recurse);
 	}
 
+	// Get/Set objects as "favorites", they just get highlighted for now
+	public static bool IsHighlighted(Object obj)
+	{
+		if ( obj == null )
+			return false;
+		const string fav = "HL";
+		return System.Array.Exists(AssetDatabase.GetLabels(obj), item=>string.Equals(item,fav));
+	}	
+	public static void ToggleHighlight(Object obj)
+	{
+		if ( obj == null )
+			return;
+		List<string> labels = new List<string>(AssetDatabase.GetLabels(obj));
+		if ( IsHighlighted(obj) )
+			labels.Remove("HL");
+		else
+			labels.Add("HL");
+		AssetDatabase.SetLabels(obj,labels.ToArray());		
+
+		// Refresh lists
+		if ( m_instance )
+			m_instance.CreateMainGuiLists();
+	}
+
 	#endregion
 	#region Functions: Quest Inventory
 
 	//
 	// Room/Character/Hotspot/Prop manipulation functions
 	//
-
-	void SelectInventory(ReorderableList list)
-	{
-		if ( m_powerQuest == null )
-			return;
-		
-		if ( m_powerQuest.GetInventoryPrefabs().IsIndexValid(list.index))
-		{
-			InventoryComponent component = m_powerQuest.GetInventoryPrefabs()[list.index];
-			if ( component != null )
-				Selection.activeObject = component.gameObject;		
-		}
-	}
 
 	public static void CreateInventory( string path, string name )
 	{
@@ -292,24 +303,23 @@ public partial class PowerQuestEditor : EditorWindow
 		if ( Directory.Exists(path) == false )
 		{
 			Directory.CreateDirectory(path);
-
 			// DL- With brief testing, it seems like I can leave out this refresh and it won't fuck up. 
-			powerQuestEditor.RequestAssetRefresh();
 			//AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate); 
 		}
 
 		// Create game object
 		GameObject gameObject = new GameObject("Inventory"+name, typeof(InventoryComponent)) as GameObject; 
 
-		InventoryComponent gui = gameObject.GetComponent<InventoryComponent>();
-		gui.GetData().EditorInitialise(name);
+		InventoryComponent component = gameObject.GetComponent<InventoryComponent>();
+		component.GetData().EditorInitialise(name);
 
-		// turn game object into prefab		
+		// turn game object into prefab
 		#if UNITY_2018_3_OR_NEWER
 		Object prefab = PrefabUtility.SaveAsPrefabAssetAndConnect(gameObject, path + "/Inventory"+name+".prefab", InteractionMode.AutomatedAction);		
 		#else
 		Object prefab = PrefabUtility.CreatePrefab(path + "/Inventory"+name+".prefab", gameObject, ReplacePrefabOptions.ConnectToPrefab);
 		#endif
+
 		// Select the prefab for editing
 		Selection.activeObject = prefab;
 
@@ -318,30 +328,18 @@ public partial class PowerQuestEditor : EditorWindow
 
 		// Add item to list in PowerQuest and repaint the quest editor
 		powerQuestEditor.m_powerQuest.GetInventoryPrefabs().Add(((GameObject)prefab).GetComponent<InventoryComponent>());
-		EditorUtility.SetDirty(powerQuestEditor.m_powerQuest); // TODO: Don't do this immediately, since it makes editor hang if you want to add multiple items
+		EditorUtility.SetDirty(powerQuestEditor.m_powerQuest);
 		powerQuestEditor.Repaint();
 
 		// Add line to GameGlobals.cs for easy scripting
-		QuestEditorUtils.InsertTextIntoFile(PATH_GAME_GLOBALS, "#I", "\n\t\tpublic static IInventory "+name+"\t\t{ get{return PowerQuest.Get.GetInventory(\""+name+"\"); } }");
+		QuestEditorUtils.InsertTextIntoFile(PATH_GAME_GLOBALS, "#I", "\n\t\tpublic static IInventory "+name.PadRight(14)+" { get { return PowerQuest.Get.GetInventory(\""+name+"\"); } }");
+		
+		powerQuestEditor.RequestAssetRefresh();
 	}
 
 	#endregion
 	#region Functions: Quest Dialog Tree
-
-	void SelectDialogTree(ReorderableList list)
-	{
-		PowerQuestEditor powerQuestEditor = OpenPowerQuestEditor();
-		if ( powerQuestEditor == null )
-			return;
-
-		if ( powerQuestEditor.m_powerQuest.GetDialogTreePrefabs().IsIndexValid(list.index))
-		{
-			DialogTreeComponent component = powerQuestEditor.m_powerQuest.GetDialogTreePrefabs()[list.index];
-			if ( component != null )
-				Selection.activeObject = component.gameObject;		
-		}
-	}
-
+	
 	public static void CreateDialogTree( string path, string name )
 	{
 		PowerQuestEditor powerQuestEditor = OpenPowerQuestEditor();
@@ -352,8 +350,9 @@ public partial class PowerQuestEditor : EditorWindow
 		path += "/" + name;
 		if ( Directory.Exists(path) == false )
 		{
-			Directory.CreateDirectory(path);
-			AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+			Directory.CreateDirectory(path);			
+			// DL- With brief testing, it seems like I can leave out this refresh and it won't fuck up. 
+			//AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
 		}
 
 		// Create game object
@@ -380,27 +379,15 @@ public partial class PowerQuestEditor : EditorWindow
 		EditorUtility.SetDirty(powerQuestEditor.m_powerQuest);
 		powerQuestEditor.Repaint();
 
-		// Add line to GameGlobals.cs for easy scripting
-		QuestEditorUtils.InsertTextIntoFile(PATH_GAME_GLOBALS, "#D", string.Format("\n\t\tpublic static IDialogTree {0}\t\t{{ get{{return PowerQuest.Get.GetDialogTree(\"{0}\"); }} }}",name));
+		// Add line to GameGlobals.cs for easy scripting		
+		QuestEditorUtils.InsertTextIntoFile(PATH_GAME_GLOBALS, "#D", "\n\t\tpublic static IDialogTree "+name.PadRight(20)+" { get { return PowerQuest.Get.GetDialogTree(\""+name+"\"); } }");
+
+		powerQuestEditor.RequestAssetRefresh();
 	}
 
 	#endregion
 	#region Functions: Quest Gui
-
-	void SelectGui(ReorderableList list)
-	{
-		PowerQuestEditor powerQuestEditor = OpenPowerQuestEditor();
-		if ( powerQuestEditor == null )
-			return;
-		
-		if ( powerQuestEditor.m_powerQuest.GetGuiPrefabs().IsIndexValid(list.index))
-		{
-			GuiComponent component = powerQuestEditor.m_powerQuest.GetGuiPrefabs()[list.index];
-			if ( component != null )
-				Selection.activeObject = component.gameObject;		
-		}
-	}
-
+	
 	public static void CreateGui( string path, string name )
 	{
 		PowerQuestEditor powerQuestEditor = OpenPowerQuestEditor();
@@ -412,7 +399,8 @@ public partial class PowerQuestEditor : EditorWindow
 		if ( Directory.Exists(path) == false )
 		{
 			Directory.CreateDirectory(path);
-			AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+			// DL- With brief testing, it seems like I can leave out this refresh and it won't fuck up. 
+			//AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate); 
 		}
 
 		// Create game object
@@ -431,6 +419,9 @@ public partial class PowerQuestEditor : EditorWindow
 		// Select the prefab for editing
 		Selection.activeObject = prefab;
 
+		// Delete the instance
+		DestroyImmediate(gameObject);
+
 		// Add item to list in PowerQuest and repaint the quest editor 
 		// NB: No longer need to 3 add to list,  they get added post-import
 		//powerQuestEditor.m_powerQuest.GetGuiPrefabs().Add(((GameObject)prefab).GetComponent<GuiComponent>());
@@ -438,26 +429,15 @@ public partial class PowerQuestEditor : EditorWindow
 		powerQuestEditor.Repaint();
 
 		// Add line to GameGlobals.cs for easy scripting
-		QuestEditorUtils.InsertTextIntoFile(PATH_GAME_GLOBALS, "#G", "\n\t\tpublic static IGui "+name+"\t\t{ get{return PowerQuest.Get.GetGui(\""+name+"\"); } }");
+		QuestEditorUtils.InsertTextIntoFile(PATH_GAME_GLOBALS, "#G", "\n\t\tpublic static IGui "+name.PadRight(14)+" { get { return PowerQuest.Get.GetGui(\""+name+"\"); } }");
+
+		powerQuestEditor.RequestAssetRefresh();
 	}
 
 
 	#endregion
 	#region Functions: Quest Character
 
-	void SelectCharacter(ReorderableList list)
-	{
-		PowerQuestEditor powerQuestEditor = OpenPowerQuestEditor();
-		if ( powerQuestEditor == null )
-			return;
-		
-		if ( powerQuestEditor.m_powerQuest.GetCharacterPrefabs().IsIndexValid(list.index))
-		{
-			CharacterComponent component = powerQuestEditor.m_powerQuest.GetCharacterPrefabs()[list.index];
-			if ( component != null )
-				Selection.activeObject = component.gameObject;		
-		}
-	}
 
 	public static void CreateCharacter( string path, string name )
 	{
@@ -470,7 +450,8 @@ public partial class PowerQuestEditor : EditorWindow
 		if ( Directory.Exists(path) == false )
 		{
 			Directory.CreateDirectory(path);
-			AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+			// DL- With brief testing, it seems like I can leave out this refresh and it won't fuck up. 
+			//AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate); 
 		}
 
 		// Create Sprite folder
@@ -479,15 +460,16 @@ public partial class PowerQuestEditor : EditorWindow
 		if ( Directory.Exists(path+"/Sprites") == false )
 		{
 			Directory.CreateDirectory(path+"/Sprites");
-			AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+			// DL- With brief testing, it seems like I can leave out this refresh and it won't fuck up. 
+			//AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
 		}
 		QuestEditorUtils.CreateImporter(path+"/_Import"+name+".asset", string.Empty);//"Character"+name);
 
 		// Create game object
 		GameObject gameObject = new GameObject("Character"+name, typeof(CharacterComponent), typeof(PolygonCollider2D), typeof(PowerSprite), typeof(SpriteAnim)) as GameObject; 
 
-		CharacterComponent character = gameObject.GetComponent<CharacterComponent>();
-		character.GetData().EditorInitialise(name);
+		CharacterComponent component = gameObject.GetComponent<CharacterComponent>();
+		component.GetData().EditorInitialise(name);
 
 		PolygonCollider2D collider = gameObject.GetComponent<PolygonCollider2D>();
 		collider.isTrigger = true;
@@ -497,7 +479,7 @@ public partial class PowerQuestEditor : EditorWindow
 		spriteObj.transform.parent = gameObject.transform;
 		spriteObj.GetComponent<SpriteRenderer>().sortingOrder = 10; // start sorting infront of most stuff
 		*/
-		character.GetComponent<SpriteRenderer>().sortingOrder = 10; // start sorting infront of most stuff
+		component.GetComponent<SpriteRenderer>().sortingOrder = 100; // start sorting infront of most stuff
 
 		// turn game object into prefab
 		#if UNITY_2018_3_OR_NEWER
@@ -508,14 +490,20 @@ public partial class PowerQuestEditor : EditorWindow
 
 		// Select the prefab for editing
 		Selection.activeObject = prefab;
+		
+		// Delete the instance
+		DestroyImmediate(gameObject);
 
 		// Add character to list in PowerQuest and repaint the quest editor
 		powerQuestEditor.m_powerQuest.GetCharacterPrefabs().Add(((GameObject)prefab).GetComponent<CharacterComponent>());
 		EditorUtility.SetDirty(powerQuestEditor.m_powerQuest);
-		powerQuestEditor.Repaint();
 
 		// Add line to GameGlobals.cs for easy scripting
-		QuestEditorUtils.InsertTextIntoFile(PATH_GAME_GLOBALS, "#C", "\n\t\tpublic static ICharacter "+name+"\t\t{ get{return PowerQuest.Get.GetCharacter(\""+name+"\"); } }");
+		QuestEditorUtils.InsertTextIntoFile(PATH_GAME_GLOBALS, "#C", "\n\t\tpublic static ICharacter "+name.PadRight(14)+" { get { return PowerQuest.Get.GetCharacter(\""+name+"\"); } }");
+		
+		powerQuestEditor.Repaint();
+		
+		powerQuestEditor.RequestAssetRefresh();
 	}
 
 
@@ -719,33 +707,41 @@ public partial class PowerQuestEditor : EditorWindow
 
 	void DeleteQuestObject( int index, string typeName, List<CharacterComponent> prefabs )
 	{
-		var item = GetQuestObjectToDelete( prefabs, ref index );
-		if ( item != null )
-			DeleteQuestObject( index, prefabs, typeName, item.GetData().ScriptName );
+		string scriptName = GetQuestObjectToDelete( prefabs, ref index )?.GetData()?.ScriptName ?? null;
+		DeleteQuestObject( index, prefabs, typeName, scriptName );
 	}
 	void DeleteQuestObject( int index, string typeName, List<InventoryComponent> prefabs )
 	{
-		var item = GetQuestObjectToDelete( prefabs, ref index );
-		if ( item != null )
-			DeleteQuestObject( index, prefabs, typeName, item.GetData().ScriptName );
+		string scriptName = GetQuestObjectToDelete( prefabs, ref index )?.GetData()?.ScriptName ?? null;
+		DeleteQuestObject( index, prefabs, typeName, scriptName );
 	}
 	void DeleteQuestObject( int index, string typeName, List<RoomComponent> prefabs )
-	{
-		var item = GetQuestObjectToDelete( prefabs, ref index );
-		if ( item != null )
-			DeleteQuestObject( index, prefabs, typeName, item.GetData().ScriptName );
+	{		
+		string scriptName = GetQuestObjectToDelete( prefabs, ref index )?.GetData()?.ScriptName ?? null;
+		string sceneName = GetQuestObjectToDelete( prefabs, ref index )?.GetData()?.GetSceneName() ?? null;
+		if ( DeleteQuestObject( index, prefabs, typeName, scriptName ) )
+		{				
+			// Also unload the scene if it's the active one			
+			if ( EditorSceneManager.GetActiveScene().name == sceneName && prefabs.Count > 0 )
+				LoadRoomScene(prefabs[0],false);
+				
+			// Also delete scene from build settings			
+			string sceneFileEnd = sceneName+".unity";
+			List<EditorBuildSettingsScene> buildScenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
+			buildScenes.RemoveAll( buildScene=>string.IsNullOrEmpty(buildScene.path) || buildScene.path.EndsWith(sceneFileEnd));
+			EditorBuildSettings.scenes = buildScenes.ToArray();				
+		}
+		
 	}
 	void DeleteQuestObject( int index, string typeName, List<DialogTreeComponent> prefabs )
 	{
-		var item = GetQuestObjectToDelete( prefabs, ref index );
-		if ( item != null )
-			DeleteQuestObject( index, prefabs, typeName, item.GetData().ScriptName );
+		string scriptName = GetQuestObjectToDelete( prefabs, ref index )?.GetData()?.ScriptName ?? null;
+		DeleteQuestObject( index, prefabs, typeName, scriptName );
 	}
 	void DeleteQuestObject( int index, string typeName, List<GuiComponent> prefabs )
 	{
-		var item = GetQuestObjectToDelete( prefabs, ref index );
-		if ( item != null )
-			DeleteQuestObject( index, prefabs, typeName, item.GetData().ScriptName );
+		string scriptName = GetQuestObjectToDelete( prefabs, ref index )?.GetData()?.ScriptName ?? null;
+		DeleteQuestObject( index, prefabs, typeName, scriptName );
 	}
 
 	// Helpers for deleting items
@@ -757,35 +753,49 @@ public partial class PowerQuestEditor : EditorWindow
 			return null;
 		return components[index];
 	}
-	void DeleteQuestObject<T>( int index, List<T> components, string typename, string name ) where T : Component
+	bool DeleteQuestObject<T>( int index, List<T> components, string typename, string name ) where T : Component
 	{
+		T component = components[index];
+		if ( component == null )
+		{
+			components.RemoveAt(index);							
+			EditorUtility.SetDirty(m_powerQuest);
+			return false;
+		}
+
 		if ( EditorUtility.DisplayDialog("Really Remove?", "Yo, you sure you wanna remove "+name+"?\n\nThis can't be undone.", "Yeah yeah", "Hmm, Nah") == false )
-			return;
+			return false;
 
 		// Undo.RecordObject(m_powerQuest, "Remove "+name); // Can't remove script changes, so don't undo
 
 		// Remove line from script
-		QuestEditorUtils.RemoveLineFromFile( PATH_GAME_GLOBALS, "Get"+typename, name);
+		QuestEditorUtils.RemoveLineFromFile( PATH_GAME_GLOBALS, typename, name);
 		
-		T component = components[index];
 		components.RemoveAt(index);		
 					
 		EditorUtility.SetDirty(m_powerQuest);
 
 		// Delete from script file
 		if ( EditorUtility.DisplayDialog("Delete files as well?", string.Format("Also delete all files for {0}?\n\nThis can't be undone either.",name), "Yes, delete them", "NO!") == false )
-			return;
+			return false;
+
+		EditorUtility.DisplayProgressBar("Deleting...","Removing asset",0.1f);
 
 		// So be it - delete directory containing the file
 		// Find in room directory
 		string path = AssetDatabase.GetAssetPath(component.gameObject);
 		AssetDatabase.MoveAssetToTrash(Path.GetDirectoryName(path));
-
-		RequestAssetRefresh();
-
+		
+		EditorUtility.DisplayProgressBar("Deleting...","Refreshing Asset Database",0.5f);
+				
 		PowerQuestEditor powerQuestEditor = EditorWindow.GetWindow<PowerQuestEditor>();
 		if ( powerQuestEditor != null ) powerQuestEditor.Repaint();
 		
+		// Fix: If we don't force a refresh here, if you add another questobject after deleting, when the asset database refreshes it deletes the new one from the list! So we have to force a refresh intead			
+		AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate); //RequestAssetRefresh();	
+
+		EditorUtility.ClearProgressBar();	
+		return true;
 	}
 
 	#endregion
@@ -866,7 +876,7 @@ public partial class PowerQuestEditor : EditorWindow
 	} }
 
 
-	public static void LoadRoomScene(RoomComponent room)
+	public static void LoadRoomScene(RoomComponent room, bool askToSave = true)
 	{
 		// Load the scene, or if the game's being played, change rooms
 		if ( Application.isPlaying )
@@ -875,7 +885,7 @@ public partial class PowerQuestEditor : EditorWindow
 			if ( PowerQuest.Exists )
 				PowerQuest.Get.ChangeRoomBG(room.GetData());
 		}
-		else if ( EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo() )
+		else if ( askToSave == false || EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo() )
 		{			
 			string scenePath = Path.GetDirectoryName(AssetDatabase.GetAssetPath(room.gameObject)) + "/" + room.GetData().GetSceneName()+".unity";
 			EditorSceneManager.OpenScene(scenePath);
@@ -1002,7 +1012,7 @@ public partial class PowerQuestEditor : EditorWindow
 			EditorPrefs.SetBool("kAutoRefresh", false);
 		}
 		else
-			AssetDatabase.Refresh(); // NB: this recompiles and everything... is slow.  Do we really want to do this now?. Maybe need to flag as dirty and do it later?
+			AssetDatabase.Refresh();
 	}
 	
 	public bool GetSmartCompileRequired() { return m_smartCompile && m_smartCompileRequired; }
@@ -1176,10 +1186,12 @@ public partial class PowerQuestEditor : EditorWindow
 				m_powerQuest = obj.GetComponent<PowerQuest>();
 		}
 		if ( m_powerQuest != null )
+		{
 			OnFoundPowerQuest();
 
-		m_selectedRoom = null;
-		UpdateRoomSelection(GameObject.FindObjectOfType<RoomComponent>(), true); 
+			m_selectedRoom = null;
+			UpdateRoomSelection(GameObject.FindObjectOfType<RoomComponent>(), true); 
+		}
 	}
 
 	void OnSceneSaving(Scene scene, string path)
@@ -1205,15 +1217,29 @@ public partial class PowerQuestEditor : EditorWindow
 		}*/
 
 	}
-
+	
 	void OnUpdate()
-	{
+	{		
+		// Check mouse position when game is running. Unfortunately, this doesn't work unless game is running.
+		if ( Application.isPlaying && Camera.main != null )
+		{
+			Vector2 mousePos = Input.mousePosition;
+			mousePos = Camera.main.ScreenToViewportPoint(mousePos);
+			if ( mousePos.x >= 0 && mousePos.x <= 1 && mousePos.y >= 0 && mousePos.y <= 1 )
+			{
+				mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+				if ( m_mousePos != mousePos )
+				{
+					m_mousePos = mousePos;				
+					if ( m_selectedTab == 1 )
+						PowerQuestEditor.Get.Repaint();
+				}
+			}
+		}
 	}
 
 	protected virtual void OnScene(SceneView sceneView)
 	{
-		//Debug.Log("Test!");
-		//Debug.Log("ok?"+(Event.current != null).ToString() );
 		if ( Event.current != null )
 		{
 			m_mousePos = Event.current.mousePosition;
@@ -1376,15 +1402,12 @@ public partial class PowerQuestEditor : EditorWindow
 
 		// Find all the paths we want to hot-load	
 		List<string> hotLoadPaths = new List<string>();
-		foreach( IQuestScriptable scriptable in hotloadedScriptables )
+		
+		for ( int i = 0; i < assets.Length; ++i )
 		{
-			string[] asset = AssetDatabase.FindAssets(scriptable.GetScriptClassName()+STR_SCRIPT_TYPE,STR_SCRIPT_FOLDERS); // This call is slow, ideally refactor to avoid
-			if ( asset.Length > 0 )
-			{
-				string hotloadPath = AssetDatabase.GUIDToAssetPath(asset[0]);
-				if ( hotLoadPaths.Contains(hotloadPath) == false ) 
-					hotLoadPaths.Add(hotloadPath);
-			}
+			string hotloadPath = AssetDatabase.GUIDToAssetPath(assets[i]);			
+			if ( hotLoadPaths.Contains(hotloadPath) == false && hotloadedScriptables.Exists(item=>hotloadPath.Contains(item.GetScriptClassName())) )
+				hotLoadPaths.Add(hotloadPath);
 		}
 
 		// Hack- Also add the GlobalScriptBase file. Later I should really move features from GlobalScriptBase to the PowerQuest system
@@ -1476,6 +1499,9 @@ public partial class PowerQuestEditor : EditorWindow
 	public void OnPostprocessAllAssets(string[] importedAssets, string[] deletedAssets, string[] movedAssets, string[] movedFromAssetPaths)
 	{
 		
+		if ( m_powerQuest == null )
+			return;
+
 		//QuestUtils.StopwatchStart();
 	  	m_selectedRoom = null;
 
@@ -1567,6 +1593,7 @@ public partial class PowerQuestEditor : EditorWindow
 	// Updates list with objects of specified type in the path, returns true if it changed.
 	bool RefreshObjectList<T>( List<T> list, string path ) where T : MonoBehaviour
 	{
+		
 		string[] assets = AssetDatabase.FindAssets("t:prefab", new string[]{path});
 
 		// Create list of all items, with check to see they're the same type (check's prefab)
@@ -1606,6 +1633,7 @@ public partial class PowerQuestEditor : EditorWindow
 	{
 		try
 		{
+
 			bool anim = PowerQuestAssetPostProcessor.HasPostProcessed(".anim");
 			bool png = PowerQuestAssetPostProcessor.HasPostProcessed(".png");
 			if ( anim == false && png == false )
@@ -1716,7 +1744,7 @@ public partial class PowerQuestEditor : EditorWindow
 		SpriteRenderer sprite = owner.GetComponentInChildren<SpriteRenderer>(true);
 		if ( sprite.sprite == null )
 		{
-			AnimationClip clip = animations.Find(item=> string.Equals(item.name, animName, System.StringComparison.OrdinalIgnoreCase));
+			AnimationClip clip = animations.Find(item=> item != null && string.Equals(item.name, animName, System.StringComparison.OrdinalIgnoreCase));
 		
 			// Check if sprite has animation now
 			if ( clip != null )

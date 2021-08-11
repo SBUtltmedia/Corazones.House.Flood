@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -37,7 +37,7 @@ public partial class Room : IQuestScriptable, IRoom
 	[Tooltip("The walkable area that's currently enabled")]
 	[SerializeField] int m_activeWalkableArea = 0;	
 	[Tooltip("Defines the bounds of the room, the camera will not go outside these bounds")]
-	[SerializeField] RectCentered m_bounds = new RectCentered(0,0,320,0);
+	[SerializeField] RectCentered m_bounds = new RectCentered(0,0,0,0);
 	[Tooltip("Defines the area in which the camera will track the player (0 to disable)")]
 	[SerializeField] RectCentered m_scrollBounds = new RectCentered(0,0,0,0);
 	[ReadOnly][SerializeField] string m_shortName = "New";			// Name used in scripts
@@ -86,8 +86,10 @@ public partial class Room : IQuestScriptable, IRoom
 	public bool Visited { get{ return m_timesVisited > 0; } }
 	public bool FirstTimeVisited { get{ return m_timesVisited == 1; } }
 	public int TimesVisited { get{ return m_timesVisited; } }
-	public RectCentered Bounds { get { return m_bounds; } }
-	public RectCentered ScrollBounds { get { return m_scrollBounds; } }
+	public RectCentered Bounds { get { return m_bounds; } set { m_bounds=value; } }
+	public RectCentered ScrollBounds { get { return m_scrollBounds; } set {m_scrollBounds=value; } }
+	/// Set the Visited property, for debugging.
+	public void DebugSetVisited(int times) {m_timesVisited=times;}
     public int ActiveWalkableArea 
     { 
         get { return m_activeWalkableArea; } 

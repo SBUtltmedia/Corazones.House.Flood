@@ -43,7 +43,8 @@ public partial class PowerQuest
 			- m_roomLoopStarted = true;
 			- Start MainLoop()
 		*/
-		bool firstRoomLoad = m_initialised == false;
+		bool firstRoomLoad = (m_initialised == false);
+
 		//
 		// Get the camera and canvas
 		//
@@ -129,7 +130,6 @@ public partial class PowerQuest
 			}
 		}
 		
-
 		// Now rooms and characters, etc are set up, mark as initialised (this is done once per application load)
 		m_initialised = true;
 
@@ -419,22 +419,25 @@ public partial class PowerQuest
 						{					
 							region = regionComponents[regionId];
 							RegionComponent.eTriggerResult result = region.UpdateCharacterOnRegionState(charId);
-							if ( result == RegionComponent.eTriggerResult.Enter )
+							if ( region.GetData().Enabled )
 							{
-								if ( StartScriptInteraction( m_currentRoom, SCRIPT_FUNCTION_ENTER_REGION+region.GetData().ScriptName, new object[] {region.GetData(), character}, false,true ) )
+								if ( result == RegionComponent.eTriggerResult.Enter )
 								{
-									yielded = true;
-									yield return m_currentSequence;
-								}
-							} 
-							else if ( result == RegionComponent.eTriggerResult.Exit )
-							{
-								if ( StartScriptInteraction( m_currentRoom, SCRIPT_FUNCTION_EXIT_REGION+region.GetData().ScriptName, new object[] {region.GetData(), character}, false,true ) )
+									if ( StartScriptInteraction( m_currentRoom, SCRIPT_FUNCTION_ENTER_REGION+region.GetData().ScriptName, new object[] {region.GetData(), character}, false,true ) )
+									{
+										yielded = true;
+										yield return m_currentSequence;
+									}
+								} 
+								else if ( result == RegionComponent.eTriggerResult.Exit )
 								{
-									yielded = true;
-									yield return m_currentSequence;
+									if ( StartScriptInteraction( m_currentRoom, SCRIPT_FUNCTION_EXIT_REGION+region.GetData().ScriptName, new object[] {region.GetData(), character}, false,true ) )
+									{
+										yielded = true;
+										yield return m_currentSequence;
+									}
 								}
-							} 
+							}
 						}
 					}
 

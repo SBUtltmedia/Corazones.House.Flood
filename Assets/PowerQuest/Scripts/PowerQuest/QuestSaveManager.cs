@@ -257,13 +257,13 @@ public class QuestSaveManager
 		if ( isSwitch )
 			return success;
 		#endif
-
-		// Remove slot data if there was some in that slot already
-		QuestSaveSlotData slotData = GetSaveSlot(slot);
-		m_saveSlots.Remove(slotData);
-		slotData = new QuestSaveSlotData() { m_slotId = slot };
-
+		
 		QuestSaveSurrogateSelector.StartLogLoad();
+
+		// Get the save slot. If it doesn't exist, try to load anyway.
+		QuestSaveSlotData slotData = GetSaveSlot(slot);
+		if ( slotData == null )
+			slotData = new QuestSaveSlotData() { m_slotId = slot };
 
 		Stream stream = null;
 		Stream cryptoStream = null;

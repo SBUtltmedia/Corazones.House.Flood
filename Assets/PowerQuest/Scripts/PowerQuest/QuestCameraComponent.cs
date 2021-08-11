@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using PowerTools;
 
@@ -10,7 +10,7 @@ namespace PowerTools.Quest
 //
 // Actual Camera component in the scene
 //
-public class QuestCameraComponent : MonoBehaviour 
+public partial class QuestCameraComponent : MonoBehaviour 
 {
 	[SerializeField] QuestCamera m_data = null;
 	[SerializeField] float m_smoothingFactor = 10.0f;
@@ -58,7 +58,7 @@ public class QuestCameraComponent : MonoBehaviour
 
 	Camera m_camera = null;
 	GameObject m_pixelCam = null;
-
+		
 
 	public void OnEnterRoom()
 	{
@@ -174,8 +174,8 @@ public class QuestCameraComponent : MonoBehaviour
 		
 		Vector2 position = m_data.GetPosition();
 
-		ICharacter character = m_data.GetCharacterToFollow(); 
-		if ( character != null || PowerQuest.Get.GetCurrentRoom() != character.Room ) 
+		ICharacter character = m_data.GetCharacterToFollow();
+		if ( character != null || PowerQuest.Get.GetCurrentRoom() != character.Room )
 		{
 			// When character is facing left/right, add/change offset from the character so the camera leads in the direction they're facing
 
@@ -319,7 +319,7 @@ public class QuestCameraComponent : MonoBehaviour
 			m_snappedLastUpdate = false;
 		m_snappedSinceUpdate = false;
 
-		UpdatePos(PowerQuest.Get.GetSkipCutscene());
+		UpdatePos(PowerQuest.Get.GetSkippingCutscene());
 	}
 
 	void LateUpdate()
@@ -411,17 +411,12 @@ public class QuestCameraComponent : MonoBehaviour
 		//
 		// Screenshake
 		//
-		m_screenShakeOffset = Vector2.zero;		
-		//if ( snap == false )
-		{
+		m_screenShakeOffset = Vector2.zero;				
+		{	
 			if ( m_shakeIntensity > 0 )
 			{
-				m_screenShakeOffset = (((new Vector2( Mathf.PerlinNoise(m_shakeSpeed * Time.time, 0), Mathf.PerlinNoise(1, m_shakeSpeed * Time.time) )) * 2) - Vector2.one) * m_shakeIntensity * m_zoomMultiplier;			
-
-				// Maybe don't snap screenshake, since it's quick
-				// m_screenShakeOffset = Utils.Snap(m_screenShakeOffset,PowerQuest.Get.SnapAmount);
-				//Debug.Log("ShakeOffset:
-
+				m_screenShakeOffset = (((new Vector2( Mathf.PerlinNoise(m_shakeSpeed * Time.time, 0), Mathf.PerlinNoise(1, m_shakeSpeed * Time.time) )) * 2) - Vector2.one) * m_shakeIntensity * m_shakeIntensityMult * m_zoomMultiplier;			
+				
 				if ( m_shakeDurationTimer > 0 )
 				{
 					m_shakeDurationTimer -= Time.deltaTime;
@@ -443,7 +438,6 @@ public class QuestCameraComponent : MonoBehaviour
 				{
 					m_shakeIntensity = 0;
 				}
-
 			}
 		}
 
@@ -455,51 +449,22 @@ public class QuestCameraComponent : MonoBehaviour
 		transform.position = (m_screenShakeOffset +position).WithZ(transform.position.z); 
 	}
 
+	// The current shake intensity. Can be used to add your own
+	public float ShakeIntensity => m_shakeIntensity;
 
-	public void Shake( CameraShakeData shakeData ) 
-	{		
-		shakeData.m_intensity *= m_shakeIntensityMult;
-		if ( shakeData.m_intensity  > m_shakeIntensity )
-		{
-			m_shakeDurationTimer = shakeData.m_duration;
-			m_shakeIntensity = shakeData.m_intensity;
-			m_shakeFalloff = m_shakeIntensity <= 0 ? 0 : ( shakeData.m_falloff * m_shakeFalloffMult / m_shakeIntensity);
-		}
-	}
-	public void Shake( float intensity, float duration, float falloff ) 
-	{		
-		intensity *= m_shakeIntensityMult;
-		//if ( intensity  > m_shakeIntensity )
-		//{
-			m_shakeDurationTimer = duration;
-			m_shakeIntensity = intensity;
-			m_shakeFalloff = m_shakeIntensity <= 0 ? 0 : ( falloff * m_shakeFalloffMult / m_shakeIntensity);
-		//}
-	}
-	public void Shake( float intensity, float duration ) 
-	{			
-		intensity *= m_shakeIntensityMult;
-		//if ( intensity  > m_shakeIntensity )
-		//{
-			m_shakeDurationTimer = duration;
-			m_shakeIntensity = intensity;
-			m_shakeFalloff = m_shakeIntensity <= 0 ? 0 : ( 1.0f * m_shakeFalloffMult / m_shakeIntensity);
-		//}
-	}
-	public void Shake( float intensity = 1.0f ) 
-	{			
-		intensity *= m_shakeIntensityMult;
-		//if ( intensity  > m_shakeIntensity )
-		//{
-			m_shakeDurationTimer = 0.1f;
-			m_shakeIntensity = intensity;
-			m_shakeFalloff = m_shakeIntensity <= 0 ? 0 : ( 1.0f * m_shakeFalloffMult / m_shakeIntensity);
-		//}
+	public void Shake( CameraShakeData shakeData )  { Shake(shakeData.m_intensity, shakeData.m_duration, shakeData.m_falloff); }
+
+	public void Shake( float intensity = 1.0f, float duration = 0.1f, float falloff = 0.15f ) 
+	{
+		m_shakeDurationTimer = duration;
+		m_shakeIntensity = intensity;
+		m_shakeFalloff = m_shakeIntensity <= 0 ? 0 : ( falloff * m_shakeFalloffMult / m_shakeIntensity);		
 	}
 
 	void MsgShake( float intensity, float duration, float falloff ) { Shake(intensity, duration,  falloff); }
 	void MsgShake( float intensity, float duration ) { Shake(intensity, duration); }
 	void MsgShake( float intensity ) { Shake(intensity); }
+
 
 }
 
@@ -574,6 +539,9 @@ public partial class QuestCamera : ICamera
 	public Vector2 OffsetFromCharacter { 
 		get { return m_offsetFromCharacter; } 
 		set { m_offsetFromCharacter = value; } }
+		
+	/// Returns the current shake intensity. \sa Shake
+	public float ShakeIntensity => (m_instance?.ShakeIntensity ?? 0);
 
 	//
 	// Getters/Setters - These are used by the engine. Scripts mainly use the properties
@@ -627,7 +595,7 @@ public partial class QuestCamera : ICamera
 		m_hasPositionOverride = false;  
 		if ( m_instance != null) 
 			m_instance.OnOverridePosition(transitionTime); 
-	}
+	}	
 
 	/// Gets the current camera zoom (mulitplier on default/room vertical height)
 	public float GetZoom() { return m_zoom > 0 ? m_zoom : 1; }
@@ -672,10 +640,8 @@ public partial class QuestCamera : ICamera
 
 	public bool GetSnappedLastUpdate() { return m_instance == null ? true : m_instance.GetSnappedLastUpdate(); }
 	public bool GetTargetPosChangedLastUpdate() { return m_instance == null ? true : m_instance.GetTargetChangedLastUpdate(); }
+		
 
-	//
-	// Public Functions
-	//
 	public void Shake(float intensity, float duration = 0.1f, float falloff = 0.15f)
 	{
 		m_instance.Shake(intensity, duration, falloff);
@@ -684,6 +650,7 @@ public partial class QuestCamera : ICamera
 	{
 		m_instance.Shake(data.m_intensity, data.m_duration, data.m_falloff);
 	}
+
 
 	//
 	// Internal Functions

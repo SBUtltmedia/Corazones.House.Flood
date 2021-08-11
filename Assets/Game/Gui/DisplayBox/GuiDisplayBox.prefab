@@ -45,11 +45,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bcb1416382639bf44a88c6a84bbf158c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_containX:
-  - {fileID: 192826}
-  m_containY:
-  - {fileID: 192826}
-  m_padding: {x: 8, y: 4}
+  m_containX: []
+  m_containY: []
+  m_padding: {x: 0, y: 0}
 --- !u!212 &212000014061693794
 SpriteRenderer:
   m_ObjectHideFlags: 0
@@ -228,21 +226,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 99f5801e9ab1722449b271233da6c14c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_text: The Quick Brown Fox Jumped over the Lazy Dog
+  m_text: 
   m_localize: 0
-  m_sortingLayer: Gui
-  m_orderInLayer: 3
-  m_wrapWidth: 200
+  m_sortingLayer: Default
+  m_orderInLayer: 0
+  m_wrapWidth: 0
   m_truncate: 0
-  m_wrapUniformLineWidth: 1
+  m_wrapUniformLineWidth: 0
   m_wrapWidthMin: 0
   m_keepOnScreen: 0
   m_shaderOverride: {fileID: 0}
   m_outline:
     m_directions: 0
     m_width: 1
-    m_color: {r: 0.04705883, g: 0.054901965, b: 0.098039225, a: 1}
-  m_unlocalizedText: The Quick Brown Fox Jumped over the Lazy Dog
+    m_color: {r: 0, g: 0, b: 0, a: 1}
+  m_unlocalizedText: 
   m_outlineMeshes: []
 --- !u!114 &114570034715884548
 MonoBehaviour:
@@ -308,18 +306,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_data:
-    m_description: 
+    m_description: Gui New
     m_position: {x: 0, y: 0}
     m_baseline: 0
-    m_visible: 0
-    m_clickable: 0
+    m_visible: 1
+    m_clickable: 1
     m_modal: 0
     m_pauseGame: 0
     m_cursor: 
     m_allowInventoryCursor: 0
     m_hideGuisWhenActive: []
-    m_scriptName: DisplayBox
-    m_scriptClass: GuiDisplayBox
+    m_scriptName: GuiNew
+    m_scriptClass: GuiNew
 --- !u!1 &1677263128809502
 GameObject:
   m_ObjectHideFlags: 0
@@ -365,11 +363,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bcb1416382639bf44a88c6a84bbf158c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_containX:
-  - {fileID: 192826}
-  m_containY:
-  - {fileID: 192826}
-  m_padding: {x: 7, y: 3}
+  m_containX: []
+  m_containY: []
+  m_padding: {x: 0, y: 0}
 --- !u!212 &212094274435650342
 SpriteRenderer:
   m_ObjectHideFlags: 0

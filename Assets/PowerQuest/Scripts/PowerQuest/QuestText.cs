@@ -43,7 +43,7 @@ public class QuestText : MonoBehaviour
 	static readonly string STR_SHADER_PIXEL = "Powerhoof/Sharp Text Shader";
 	#endif
 	static readonly string STR_SHADER = "GUI/Text Shader";
-	static readonly float SCREEN_PADDING = 8.0f;
+	static readonly Vector2 SCREEN_PADDING = new Vector2(8,8);
 
 	static readonly Vector3[] SHADOW_OFFSETS = new Vector3[]	
 	{
@@ -226,7 +226,7 @@ public class QuestText : MonoBehaviour
 						else if ( m_mesh.alignment == TextAlignment.Right )
 							bounds.x += m_wrapWidth;
 
-						cameraBounds = new Rect(camera.transform.position.x, camera.transform.position.y, camera.orthographicSize * 2.0f * camera.aspect - SCREEN_PADDING, camera.orthographicSize * 2.0f - SCREEN_PADDING);
+						cameraBounds = new Rect(camera.transform.position.x, camera.transform.position.y, camera.orthographicSize * 2.0f * camera.aspect - SCREEN_PADDING.x, camera.orthographicSize * 2.0f - SCREEN_PADDING.y);
 						cameraBounds.x -= cameraBounds.width*0.5f;
 						cameraBounds.y -= cameraBounds.height*0.5f;
 
@@ -287,7 +287,7 @@ public class QuestText : MonoBehaviour
 			}
 
 			// Update outline
-			if ( m_outline != null && m_outline.m_directions != 0 )
+			if ( m_outline != null && m_outline.m_directions != 0 && gameObject.scene.IsValid() )
 			{
 
 				// Meshes may have been deleted, so remove them if they have
@@ -406,10 +406,10 @@ public class QuestText : MonoBehaviour
 
 			if ( PowerQuest.Get.GetSnapToPixel() )
 			{
-			// finally we snap so that the text verts don't jiggle around
-			// The snap amount is modified by the current camera zoom to account for resolution differences in the game camera and the gui camera (stops pixel text jiggling)
-			float snapAmount = PowerQuest.Get.SnapAmount * Mathf.Max(questCam.GetZoom(),1);
-			transform.position = Utils.Snap(guiSpacePosition, snapAmount );
+				// finally we snap so that the text verts don't jiggle around
+				// The snap amount is modified by the current camera zoom to account for resolution differences in the game camera and the gui camera (stops pixel text jiggling)
+				float snapAmount = PowerQuest.Get.SnapAmount * Mathf.Max(questCam.GetZoom(),1);
+				transform.position = Utils.Snap(guiSpacePosition, snapAmount )+new Vector2(0.001f,0.001f);
 			
 				// Offset by amount camera has moved so vertexes snap internally, but text still scrolls smoothly
 				Vector2 offset = guiSpacePosition-(Vector2)transform.position;

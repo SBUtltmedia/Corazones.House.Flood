@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -110,10 +110,17 @@ public partial interface IPowerQuest
 	// Cutscenes
 	//
 
-	/// Starts a cutscene. If player presses esc, the game will skip forward until the next EndCutscene()
+	/// Starts a cutscene. If player presses esc, the game will skip forward until the next EndCutscene() \sa StartCutscene \sa EndCutscene
 	void StartCutscene();	
-	/// Ends a cutscene. When plyer presses esc after a "StartCutscene", this is where they'll skip to
+	/// Ends a cutscene. When plyer presses esc after a "StartCutscene", this is where they'll skip to \sa StartCutscene \sa EndCutscene
 	void EndCutscene();
+	/// Returns true when a cutscene is currently being skipped.
+	/// Can be used to check if your own code should be skipped, or if a sequence you're in has been skipped.
+	/// 
+	/// eg:  `while ( m_boolToWaitFor && E.GetSkippingCutscene() == false ) yield return E.Wait(0);`
+	/// 
+	/// \sa StartCutscene \sa EndCutscene
+	bool GetSkippingCutscene();
 
 	//
 	// Screen transitions (fading to/from a color)
@@ -162,9 +169,9 @@ public partial interface IPowerQuest
 		
 		**Example:**
 
-		    `E.Timer("egg",6) );`
+		    `E.SetTimer("egg",6) );`
 
-		Will set the timer "egg" to expire after 6 seconds
+		Will set the timer "egg" to expire after 6 seconds.
 
 		**Rolling your own timers:**
 		AGS users are familiar with the SetTimer() function, which is why it is included. However, it's good to know how to make your own timers, it's a fundamental building block of game coding! 
@@ -188,6 +195,7 @@ public partial interface IPowerQuest
 		        }
 		    }
 		~~~	
+		\sa GetTimerExpired \sa GetTimer
 		
 	*/
 	void SetTimer(string name, float time);
@@ -195,13 +203,16 @@ public partial interface IPowerQuest
 
 		**Note that this function will only return true once** - after that, the timer will always return false until restarted
 
-		**Example:**
+		**Example: (in UpdateBlocking)**
 		    if ( E.GetTimerExpired("egg") ) 
                 Display: Egg timer expired
-		will display a message when timer "egg" expires
+		
+		will display a message when timer "egg" expires.
+		\sa SetTimer \sa GetTimer 
 	*/
 	bool GetTimerExpired(string name);
 	/// Returns the time remaining on the timer with specified `name`. 
+	/// \sa SetTimer \sa GetTimerExpired 
 	float GetTimer(string name);
 
 	//
@@ -372,6 +383,8 @@ public partial interface IPowerQuest
 	 * 		C.Display("You unlock the door");
 	 * else
 	 * 		C.Display("It's already unlocked");
+	 * 		
+	 *  \sa Occurrance \sa GetOccuranceCount
 	 */
 	bool FirstOccurance(string uniqueString);
 
@@ -380,6 +393,8 @@ public partial interface IPowerQuest
 	 * Usage:
 	 * if ( Occurance("knocked on door") < 3 )
 	 * 		C.Display("You knock on the door");
+	 * 		
+	 *  \sa FirstOccurance \sa GetOccuranceCount
 	 */
 	int Occurrance(string thing);
 
@@ -388,6 +403,8 @@ public partial interface IPowerQuest
 	 * Usage:
 	 * if ( GetOccuranceCount("knocked on door") == 3 )
 	 * 		C.Doorman("Who's there?");
+	 * 		
+	 *  \sa FirstOccurance \sa Occurrance
 	 */
 	int GetOccuranceCount(string thing);
 
@@ -520,7 +537,7 @@ public partial interface ICharacter : IQuestClickableInterface
 	/// Access to the actual game object component in the scene
 	MonoBehaviour Instance{get;}
 
-	/// The room the character's in. Setting this moves the character to another room. If the player character is moved, the scene will change to the new room.
+	/// The room the character's in. Setting this moves the character to another room. If the player character is moved, the scene will change to the new room. \sa ChangeRoom() \sa ChangeRoomBG()
 	IRoom Room {get;set;}
 
 	/// Returns the last room visited before the current one
@@ -531,10 +548,19 @@ public partial interface ICharacter : IQuestClickableInterface
 	/// The positiont the character is currently at, or walking towards
 	Vector2 TargetPosition{ get; }
 
-	/// Set the location of the character
-	void SetPosition(float x, float y);
-	/// Set the location of the character
-	void SetPosition( Vector2 position );
+	/// Set the location of the character, with an optional 'facing' direction.
+	/** 
+	Eg `C.Dave.SetPosition(12,34);` or `C.Barney.SetPosition(43,21,eFace.Right);`. 
+	Tip: Move your cursor over the scene window and press Ctrl+M to copy the coordinates to the clipboard. Then paste them into this function!
+	\sa Position \sa Facing
+	*/
+	void SetPosition(float x, float y, eFace face = eFace.None);
+	/// Set the location of the character, with an optional 'facing' direction. 
+	/** 
+	Eg `C.Dave.SetPosition(new Vector2(12,34));` or `C.Barney.SetPosition(Points.UnderTree,eFace.Right);` 
+	\sa Position \sa Facing
+	*/
+	void SetPosition( Vector2 position, eFace face = eFace.None );
 
 	/// The position of the character's baseline (for sorting)
 	float Baseline { get;set; }
@@ -549,40 +575,52 @@ public partial interface ICharacter : IQuestClickableInterface
 	/// How fast characters turn (turning-frames-per-second)
 	float TurnSpeedFPS { get;set; }
 
-	// Whether the walk speed adjusts to match the size of th character when scaled by regions
+	/// Whether the walk speed adjusts to match the size of th character when scaled by regions
 	bool AdjustSpeedWithScaling { get;set;}
+		
+	/// Gets/sets the character's blocking width and height.
+	/**
+	The solid size determines how large of a blocking rectangle the character exerts to stop other characters walking through it. If this is set to 0,0 (the default), then the blocking rectangle is automatically calculated to be the character's width, and 5 pixels high.
+	You can manually change the setting by entering a blocking height in pixels, which is the size of walkable area that the character effectively removes by standing on it.
+	\sa Solid
+	*/
+	Vector2 SolidSize { get; set; }
 
-	/// The enumerated direction the character is facing
+	/// Gets/sets whether the character uses it's sprite as it's hotspot, instead of a collider specified in the inspector
+	bool UseSpriteAsHotspot { get; set; }
+
+	/// The enumerated direction the character is facing. Useful when you want to set a character's face direction without them turning
+	/** 
+	 Example:	 
+	     // If Dave is facing right, immediately change him to be facing up-left 
+	     if ( C.Dave.Facing == eFace.Right )
+	         C.Dave.Facing = eFace.UpLeft;
+	 */
 	eFace Facing{get;set; }
 
 	/// Gets or Sets whether clicking on the object triggers an event
 	bool Clickable { get;set; }
-	/// Gets or sets whether the character is visible
+	/// Gets or sets whether the character visible flag is set. \sa Show()
 	bool Visible  { get;set; }
-	/// Gets whether the character is visible in the current room. Same as `C.Fred.Visible && C.Fred.Room == R.Current`
+	/// Gets whether the character is *actually* visible and in the current room. Same as `(C.Fred.Visible && C.Fred.Room != null && C.Fred.Room == R.Current)`
 	bool VisibleInRoom  { get; }
+	/// Gets/sets whether the character can be walked through by other characters. 
+	/// If this is set to true, then the character is solid and will block the path of other characters. If this is set to false, then the character acts like a hologram, and other characters can walk straight through him. 	\sa Solid 
+	bool Solid { get; set; }
 	/// Gets or sets whether the character can move/walk. If false, WalkTo commands are ignored.
 	bool Moveable { get;set; }
-
-	/// <summary>
-	/// Gets a value indicating whether this <see cref="PowerTools.Quest.ICharacter"/> is walking.
-	/// </summary>
-	/// <value><c>true</c> if walking; otherwise, <c>false</c>.</value>
+	/// Gets a value indicating whether this <see cref="PowerTools.Quest.ICharacter"/> is currently walking.
 	bool Walking { get; }
-	/// <summary>
-	/// Gets a value indicating whether this <see cref="PowerTools.Quest.ICharacter"/> is talking.
-	/// </summary>
-	/// <value><c>true</c> if talking; otherwise, <c>false</c>.</value>
-	bool Talking { get; }
-	/// <summary>
-	/// Gets a value indicating whether this <see cref="PowerTools.Quest.ICharacter"/> is playing an animation.
-	/// </summary>
-	/// <value><c>true</c> if playing an animation (from PlayAnimation); otherwise, <c>false</c>.</value>
+	/// Gets a value indicating whether this <see cref="PowerTools.Quest.ICharacter"/> is currently talking.
+	bool Talking { get; }	
+	/// Gets a value indicating whether this <see cref="PowerTools.Quest.ICharacter"/> is playing an animation from `PlayAnimation()`, or `Animation = "someAnim"` NOT a regular Idle, walk or Talk anim.
 	bool Animating { get; }
 	/// Whether this instance is the current player.
 	bool IsPlayer {get;}
 	/// Gets or sets the text colour for the character's speech text
 	Color TextColour  { get;set; }
+	/// Gets or sets the position the player's dialog text will be shown (in world space). If set to zero, the default will be used (Displayed above the character sprite).
+	Vector2 TextPositionOverride { get;set; }
 	/// Gets or sets the idle animation of the character
 	string AnimIdle { get;set; }
 	/// Gets or sets the walk animation of the character
@@ -611,37 +649,185 @@ public partial interface ICharacter : IQuestClickableInterface
 	int UseCount {get;}
 	/// Returns the number of times player has "looked" at the object. 0 when it's the first click on the object.
 	int LookCount {get;}
-	/// Gets or sets the walk to point
+	/// Gets or sets the walk to point. 
+	/** 
+		Note that this is an offset from the character's position:
+		- To get their actual WalkTo point in scene-coordinates, add it like this: `Vector2 actualWalkToPos = C.Barney.WalkToPoint + C.Barney.Position;`
+		- To set their actual WalkTo point from scene-coordinates, subtract it like this: `C.Barney.WalkToPoint = Points.BarneyNewWalkTo - C.Barney.Position;`
+	 */
 	Vector2 WalkToPoint { get;set; }
 	/// Gets or sets the look at point
+	/** 
+		Note that this is an offset from the character's position:
+		- To get their actual LookAt point in scene-coordinates, add it like this: `Vector2 actualLookAtPos = C.Barney.LookAtPoint + C.Barney.Position;`
+		- To set their actual LookAt point from scene-coordinates, subtract it like this: `C.Barney.LookAtPoint = Points.BarneyNewLookAt - C.Barney.Position;`
+	 */
 	Vector2 LookAtPoint { get;set; }
+	/// Make the character walk to a position in game coords. 
+	/**
+	If 'anywhere' is true, the character will ignore walkable areas
+
+	There are a few different WalkTo functions to serve different needs.
+	eg: `C.Dave.WalkTo(12,34);`, C.Dave.WalkTo(Points.IntoSky, true);`, `C.Dave.WalkTo(C.Barney);`, or the quest script command `WalkToClicked`
+	\sa WalkToBG() \sa StopWalking()
+	*/
+	Coroutine WalkTo(float x, float y, bool anywhere = false );
+	/// Make the character walk to a position in game coords. 
+	/**
+	If 'anywhere' is true, the character will ignore walkable areas
+
+	There are a few different WalkTo functions to serve different needs.
+	eg: `C.Dave.WalkTo(12,34);`, C.Dave.WalkTo(Points.IntoSky, true);`, `C.Dave.WalkTo(C.Barney);`, or the quest script command `WalkToClicked`
+	\sa WalkToBG() \sa StopWalking()
+	*/
+	Coroutine WalkTo(Vector2 pos, bool anywhere = false);
+	/// Make the character walk to the walk-to-point of a clickable object. (characters, props, hotspots, etc)
+	/**
+	If 'anywhere' is true, the character will ignore walkable areas
+
+	There are a few different WalkTo functions to serve different needs.
+	eg: `C.Dave.WalkTo(12,34);`, C.Dave.WalkTo(Points.IntoSky, true);`, `C.Dave.WalkTo(C.Barney);`, or the quest script command `WalkToClicked`
+	\sa WalkToBG() \sa StopWalking()
+	*/
+	Coroutine WalkTo(IQuestClickableInterface clickable, bool anywhere = false );
+	
 	/// Make the character walk to a position in game coords without halting the script
+	/**
+	eg: `C.Dave.WalkToBG(12,34);` or `C.Barney.WalkToBG(43,21,eFace.Left);`
+	If 'anywhere' is true, the character will ignore walkable areas
+	If 'thenFace' is specified, the character will face that direction once they finish walking
+	\sa WalkTo() \sa StopWalking()
+	*/
 	void WalkToBG( float x, float y, bool anywhere = false, eFace thenFace = eFace.None );
 	/// Make the character walk to a position in game coords without halting the script
+	/**
+	If 'anywhere' is true, the character will ignore walkable areas
+	If 'thenFace' is specified, the character will face that direction once they finish walking
+	\sa WalkTo() \sa StopWalking()
+	*/
 	void WalkToBG( Vector2 pos, bool anywhere = false, eFace thenFace = eFace.None );
 	/// Make the character walk to the walk-to-point of a clickable object without halting the script
 	void WalkToBG(IQuestClickableInterface clickable, bool anywhere = false, eFace thenFace = eFace.None);
-	/// Make the character walk to a position in game coords
-	Coroutine WalkTo(float x, float y, bool anywhere = false );
-	/// Make the character walk to a position in game coords
-	Coroutine WalkTo(Vector2 pos, bool anywhere = false);
-	/// Make the character walk to the walk-to-point of a clickable object
-	Coroutine WalkTo(IQuestClickableInterface clickable, bool anywhere = false );
-	/// Make the character walk to the walk-to-point of the last object clicked on
+	/// Make the character walk to the walk-to-point of the last object clicked on. In QuestScripts you can use the shortcut `WalkToClicked`
 	Coroutine WalkToClicked(bool anywhere = false);
-	// Stop the character
+	
+	/// Stop the character walking or moving. Also clears any waypoints.
 	Coroutine StopWalking();
+
+	/// Tells the character to move to a location directly, after it has finished its current move. Ignores walkable areas.
+	/** This function allows you to queue up a series of moves for the character to make, if you want them to take a preset path around the screen. Note that any moves made with this command ignore walkable areas.
+	 
+	This is useful for situations when you might want a townsperson to wander onto the screen from one side, take a preset route around it and leave again.
+
+	If 'thenFace' is specified, the character will face that direction once they finish walking
+
+	Example: 
+		C.Barney.Walk(160, 100);
+		C.Barney.AddWaypoint(50, 150);
+		C.Barney.AddWaypoint(50, 50, eFace.Right);
+	Tells character Barney to first of all walk to the centre of the screen normally (obeying walkable areas), then move to the bottom left corner and then top left corner afterwards, then face right.
+	\sa Walk \sa StopWalking
+	 */
+	void AddWaypoint(float x, float y, eFace thenFace = eFace.None);
+	/// Tells the character to walk to a point directly, after it has finished its current move. Ignores walkable areas.
+	/** This function allows you to queue up a series of moves for the character to make, if you want them to take a preset path around the screen. Note that any moves made with this command ignore walkable areas.
+
+	This is useful for situations when you might want a townsperson to wander onto the screen from one side, take a preset route around it and leave again.
+
+	If 'thenFace' is specified, the character will face that direction once they finish walking
+
+	Example: 
+		C.Barney.Walk(Points.Center);
+		C.Barney.AddWaypoint(Points.BotLeft);
+		C.Barney.AddWaypoint(Points.TopLeft, eFace.Right);
+	Tells character Barney to first of all walk to the centre of the screen normally (obeying walkable areas), then move to the bottom left corner and then top left corner afterwards, Then face right.
+	\sa Walk \sa StopWalking
+	 */
+	void AddWaypoint(Vector2 pos, eFace thenFace = eFace.None);
+
+	/// Make the character move to a position in game coords without playing their walk animation.
+	/**
+	If 'anywhere' is true, the character will ignore walkable areas
+	
+	This is the same as `WalkTo()`, except that the character won't face the direction they're moving, and won't play their walk animation. In the majority of cases you should use `WalkTo()`
+
+	eg: `C.Dave.MoveTo(12,34);`, C.Dave.MoveTo(Points.IntoSky, true);`.
+	\sa WalkTo() \sa MoveToBG() \sa StopWalking()
+	*/
+	Coroutine MoveTo(float x, float y, bool anywhere = false );
+	/// Make the character move to a position in game coords without playing their walk animation.
+	/**
+	If 'anywhere' is true, the character will ignore walkable areas
+	
+	This is the same as `WalkTo()`, except that the character won't face the direction they're moving, and won't play their walk animation. In the majority of cases you should use `WalkTo()`
+
+	eg: `C.Dave.MoveToBG(12,34);`, C.Dave.MoveToBG(Points.IntoSky, true);`.
+	\sa WalkTo() \sa MoveToBG() \sa StopWalking()
+	*/
+	Coroutine MoveTo(Vector2 pos, bool anywhere = false);
+	/// Make the character move to the walk-to-point of a clickable object. Their Walk animation will NOT be played.
+	/**
+	If 'anywhere' is true, the character will ignore walkable areas
+	
+	This is the same as `WalkTo()`, except that the character won't face the direction they're moving, and won't play their walk animation. In the majority of cases you should use `WalkTo()`
+
+	eg: `C.Dave.MoveToBG(12,34);`, C.Dave.MoveToBG(Points.IntoSky, true);`.
+	\sa WalkTo() \sa MoveToBG() \sa StopWalking()
+	*/
+	Coroutine MoveTo(IQuestClickableInterface clickable, bool anywhere = false );	
+	/// Make the character move to a position in game coords without halting the script. Their Walk animation will NOT be played.
+	/**
+	This is the same as `WalkToBG()`, except that the character won't face the direction they're moving, and won't play their walk animation. In the majority of cases you should use `WalkTo()`
+	eg: `C.Dave.MoveToBG(12,34);`, C.Dave.MoveToBG(Points.IntoSky, true);`
+	If 'anywhere' is true, the character will ignore walkable areas
+	\sa MoveTo() \sa WalkTo() \sa StopWalking()
+	*/
+	void MoveToBG( float x, float y, bool anywhere = false );
+	/// Make the character move to a position in game coords without halting the script. Their Walk animation will NOT be played.
+	/**
+	This is the same as `WalkToBG()`, except that the character won't face the direction they're moving, and won't play their walk animation. In the majority of cases you should use `WalkTo()`
+	If 'anywhere' is true, the character will ignore walkable areas
+	\sa MoveTo() \sa WalkTo() \sa StopWalking()
+	*/
+	void MoveToBG( Vector2 pos, bool anywhere = false );
+	/// Make the character move to the walk-to-point of a clickable object without halting the script. Their Walk animation will NOT be played.
+	/**
+	This is the same as `WalkToBG()`, except that the character won't face the direction they're moving, and won't play their walk animation. In the majority of cases you should use `WalkTo()`
+	If 'anywhere' is true, the character will ignore walkable areas
+	\sa MoveTo() \sa WalkTo() \sa StopWalking()
+	*/
+	void MoveToBG(IQuestClickableInterface clickable, bool anywhere = false );	
+
 	/// Moves the character to another room. If the player character is moved, the scene will change to the new room and script will wait until after OnEnterRoomAfterFade finishes. NB: This does NOT currently work in Unity 2019 and later.
 	Coroutine ChangeRoom(IRoom room);
 	/// Moves the character to another room. If the player character is moved, the scene will change to the new room.
 	void ChangeRoomBG(IRoom room);
-	/// Set's visible & clickable (Same as `Enable()`), and changes them to the current room (if they weren't there already)
-	void Show( bool clickable = true );
-	/// Set's invisible & non-clickable (Same as `Disable()`)
+	/// Obsolete: Set's visible & clickable (Same as `Enable(bool clickable)`), and changes them to the current room (if they weren't there already) \sa Hide()	
+	[System.Obsolete("Show(bool clickable) is obsolete. Use Show(), and Clickable property. Note that Show/Hide functions now remember previous state of visible/clickable/solid and restore it.")]
+	void Show( bool clickable );		
+	/// Shows the character again after a call to Hide(), moving them to current room, and forcing Visible to true.
+	/// You can optionally pass in a position or face direction. If not passed no change will be made.
+	/// The Enable() function is similar, but doesn't set Visible to true, or move them to the current room.
+	/// \sa Hide() \sa Disable() \sa Enable()
+	void Show( Vector2 pos = new Vector2(), eFace facing = eFace.None );	
+	/// Shows the character again after a call to Hide(), moving them to current room, and forcing Visible to true.
+	/// You can optionally pass in a position or face direction. If not passed no change will be made.
+	/// The Enable() function is similar, but doesn't set Visible to true, or move them to the current room.
+	/// \sa Hide() \sa Disable() \sa Enable()
+	void Show( float posX, float posy, eFace facing = eFace.None );
+	/// Shows the character again after a call to Hide(), moving them to current room, and forcing Visible to true.
+	/// You can optionally pass in a position or face direction. If not passed no change will be made.
+	/// The Enable() function is similar, but doesn't set Visible to true, or move them to the current room.
+	/// \sa Hide() \sa Disable() \sa Enable()
+	void Show( eFace facing );
+	/// Hides the character until Show() is called. Saves you setting Visible, Clickable, Solid all to false. (Same as `Disable()`) \sa Show() \sa Disable() \sa Enable()
 	void Hide();
-	/// Set's visible & clickable, and changes them to the current room (if they weren't there already)
-	void Enable(bool clickable = true);
-	/// Set's invisible & non-clickable
+	/// Enables the character again after a call to `Disable()` or `Hide()`. Does NOT move them to the current room, or set Visible like `Show()` does. \sa Disable() \sa Hide() \sa Show()
+	void Enable();
+	/// Obsolete: Set's visible & clickable, and changes them to the current room (if they weren't there already)
+	[System.Obsolete("Show(bool clickable) is obsolete. Use Show(), and Clickable property. Note that Show/Hide functions now remember previous state of visible/clickable/solid and restore it.")]
+	void Enable(bool clickable);
+	/// Disables the character until Enable() is called. Saves you setting Visible, Clickable, Solid all to false. \sa Show() \sa Hide() \sa Enable()
 	void Disable();
 	/// Faces character in a direction. Turning, unless instant is false
 	Coroutine Face( eFace direction, bool instant = false );
@@ -657,9 +843,13 @@ public partial interface ICharacter : IQuestClickableInterface
 	Coroutine FaceLeft(bool instant = false);
 	/// Faces character right
 	Coroutine FaceRight(bool instant = false);
+	/// Faces character a specified direction
 	Coroutine FaceUpRight(bool instant = false);
+	/// Faces character a specified direction
 	Coroutine FaceUpLeft(bool instant = false);
+	/// Faces character a specified direction
 	Coroutine FaceDownRight(bool instant = false);
+	/// Faces character a specified direction
 	Coroutine FaceDownLeft(bool instant = false);
 	/// Faces character towards a position in on screen coords
 	Coroutine Face(float x, float y, bool instant = false);
@@ -671,7 +861,6 @@ public partial interface ICharacter : IQuestClickableInterface
 	Coroutine FaceAway(bool instant = false);
 	/// Faces character in a direction
 	Coroutine FaceDirection(Vector2 directionV2, bool instant = false);
-
 	
 	/// Faces character in a direction. Turning, unless instant is false. Does NOT halt script.
 	void FaceBG( eFace direction, bool instant = false );
@@ -687,9 +876,13 @@ public partial interface ICharacter : IQuestClickableInterface
 	void FaceLeftBG(bool instant = false);
 	/// Faces character right. Does NOT halt script.
 	void FaceRightBG(bool instant = false);
+	/// Faces character a specified direction. Does NOT halt script.
 	void FaceUpRightBG(bool instant = false);
+	/// Faces character a specified direction. Does NOT halt script.
 	void FaceUpLeftBG(bool instant = false);
+	/// Faces character a specified direction. Does NOT halt script.
 	void FaceDownRightBG(bool instant = false);
+	/// Faces character a specified direction. Does NOT halt script.
 	void FaceDownLeftBG(bool instant = false);
 	/// Faces character towards a position in on screen coords. Does NOT halt script.
 	void FaceBG(float x, float y, bool instant = false);
@@ -701,26 +894,42 @@ public partial interface ICharacter : IQuestClickableInterface
 	void FaceAwayBG(bool instant = false);
 	/// Faces character in a direction. Does NOT halt script.
 	void FaceDirectionBG(Vector2 directionV2, bool instant = false);
+		
+	/// Causes the character to face another character, and continue to turn to face them if either character moves. 
+	/// <param name="character">The character to face</param>
+	/// <param name="minWaitTime">The minimum time delay before they'll turn to face the other character. Default 0.2 seconds.</param>
+	/// <param name="maxWaitTime">The maximum time delay before they'll turn to face the other character. Default 0.4 seconds.</param>
+	/// \sa `StopFacingCharacter();`
+	void StartFacingCharacter(ICharacter character, float minWaitTime = 0.2f, float maxWaitTime = 0.4f);	
+	/// Stops the chracter facing another after a call to `StartFacingCharacter()`
+	void StopFacingCharacter();
 
-	/// Make chracter speak a line of dialog
+	/// Make chracter speak a line of dialog. eg. `C.Barney.Say("Hello");` Note that in QuestScript window you can just type `Barney: Hello` \sa SayBG() \sa E.Display()
 	Coroutine Say(string dialog, int id = -1);
-	/// Make chracter speak a line of dialog, without halting the script
+	/// Make chracter speak a line of dialog, without halting the script.  eg. `C.Barney.SayBG("Some dialog I'm saying in the background");` \sa Say() \sa E.DisplayBG() \sa CancelSay()
 	Coroutine SayBG(string dialog, int id = -1);
 	/// Cancel any current dialog the character's speaking
 	void CancelSay();
 
-	/// Play an animation on the character. Will return to idle after animation ends.
+	/// Play an animation on the character. Will return to idle after animation ends. 
+	/// \sa PlayAnimationBG() \sa Animation \sa AnimIdle \sa AnimWalk \sa AnimTalk
 	Coroutine PlayAnimation(string animName);
 	/// Play an animation on the character without halting the script. Will return to idle after animation ends, unless pauseAtEnd is true.
 	/**
 		If pauseAtEnd is true, the character will stay on the last frame until StopAnimation() is called. Otherwise they will return to idle once the animation has finished playing
+		\sa Animation \sa PlayAnimation() \sa StopAnimation \sa AnimIdle \sa AnimWalk \sa AnimTalk
 	*/
 	void PlayAnimationBG(string animName, bool pauseAtEnd = false);
+	
+	/// Gets or sets an override animation on the character. Until StopAnimation() is called, this will play, and AnimIdle,AnimTalk,AnimWalk will all be ignored. 
+	/// This is the equivalent of calling PlayAnimationBG() with pauseAtEnd set to true.
+	/// \sa StopAnimation() \sa AnimIdle \sa AnimWalk \sa AnimTalk \sa PlayAnimation() \sa PlayAnimationBG()	
+	string Animation {get;set;}
 	// Pauses the currently playing animation
 	void PauseAnimation();
 	// Resumes playing the current animation
 	void ResumeAnimation();
-	// Stops the current animaion- returns to Idle animation
+	// Stops the current animation- returns to Idle animation
 	void StopAnimation();
 
 	// Gets/Sets name of the sound used for footsteps for this character. Add "Footstep" event in the anim editor (with "Anim prefix" ticked)
@@ -850,6 +1059,10 @@ public partial interface IRoom
 	int ActiveWalkableArea { get; set; }
 	/// Gets or sets whether the player character is visisble in this room
 	bool PlayerVisible { get; set; }
+	/// Access to the room's bounds
+	RectCentered Bounds { get; set; }
+	/// Access to the room's scroll bounds
+	RectCentered ScrollBounds { get; set; }
 
 	/// Sets the vertical resolution of this room (How many pixels high the camera view will be). If non-zero, it'll override the default set in PowerQuest. 
 	float VerticalResolution { get;set; }
@@ -1327,13 +1540,13 @@ public partial interface ICamera
 
 	/// Snaps the camera to it's target position. Use to cancel the camera from smoothly transitioning to the player position
 	void Snap();
-
+		
 	/// <summary>
 	/// Shake the camera with the specified intensity, duration and falloff.
 	/// </summary>
-	/// <param name="intensity">Intensity- The strength to shake the camera (in pixels).</param>
+	/// <param name="intensity">Intensity- The strength to shake the camera (in pixels/game units).</param>
 	/// <param name="duration">Duration- How long to shake camera at full intensity.</param>
-	/// <param name="falloff">Falloff- How long it takes for camera to go from full intensity to zero.</param>
+	/// <param name="falloff">Falloff- How long in seconds it takes for camera to go from full intensity to zero.</param>
 	void Shake(float intensity = 1.0f, float duration = 0.1f, float falloff = 0.15f);
 	/// Shake the camera with the specified data.
 	void Shake(CameraShakeData data);

@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -85,7 +85,7 @@ public partial class Inventory : IQuestClickable, IQuestScriptable, IInventory
 	public Vector2 LookAtPoint  { get{return Vector2.zero;} set{} }
 	public float Baseline  { get{ return 0;} set{} }
 	public bool Clickable { get{return true;} set{} }
-	public string Cursor { get{return m_animCursor;} set{m_animCursor=value;} }
+	public string Cursor { get{return null;} set{} } // NB: This is the cursor used when mouse is hovered over item in inventory panel
 	public Vector2 Position { get{return Vector2.zero;} }
 	public void OnInteraction( eQuestVerb verb ){}
 	public void OnCancelInteraction( eQuestVerb verb ){}

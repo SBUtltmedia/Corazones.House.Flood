@@ -8,14 +8,19 @@ namespace PowerTools
 public class Pathfinder
 {		
 	public class PathPoly
-	{
+	{	
 		public PolygonCollider2D m_collider = null;
-		public Transform m_transform = null; // colliders transform, stored for efficiency
+		public Transform m_transform = null; // usually the colliders transform, stored for efficiency. But can optionally only set this and not the polygon collider
 		public Vector2[] m_verts = null;
 		public Vector2[] m_vertsInflated = null;
 
 		// For auto-detecting changes when transform moved
-		public Vector2 m_positionCached = Vector2.zero; 
+		public Vector2 m_positionCached = Vector2.zero;
+
+		// Set enabled/disabled to turn the poly on/off temporarily
+		public bool m_enabled = true;
+		// Used to check if the poly needs to be updated when a path is calculated. Then is set to m_enabled.
+		public bool m_wasEnabled = true;
 	}
 
 	public class PathNode
@@ -64,6 +69,24 @@ public class Pathfinder
 		m_mainPoly = AddPolygon(collider, true, pointsoverride );
 	}
 
+	public void AddObstacle( Transform transform, Vector2[] points )
+	{
+		// Add obstacle, if not already added
+		if (  m_pathPolys.Exists( item=>item.m_transform == transform ) == false )
+		{
+			AddPolygon(transform, false, points);
+		}
+	}
+	public void RemoveObstacle( Transform transform )
+	{	
+		if ( transform == null )
+			return;			
+		PathPoly obstacle = m_pathPolys.Find(item=>item.m_transform == transform);
+		if ( obstacle == null )
+			return;
+		RemovePolygon(obstacle);
+	}
+
 	// Adds an obstacle. NB: If the collider's already been added it doesn't add it again
 	public void AddObstacle( PolygonCollider2D collider, Vector2[] pointsoverride = null )
 	{
@@ -83,21 +106,41 @@ public class Pathfinder
 		RemovePolygon(obstacle);
 	}
 
+	public void EnableObstacle(Transform trans)
+	{
+		if ( trans == null )
+			return;
+		PathPoly obstacle = m_pathPolys.Find(item=>item.m_transform == trans);
+		if ( obstacle != null )
+			obstacle.m_enabled = true;
+	}
+	public void DisableObstacle(Transform trans)
+	{
+		if ( trans == null )
+			return;
+		PathPoly obstacle = m_pathPolys.Find(item=>item.m_transform == trans);
+		if ( obstacle != null )
+			obstacle.m_enabled = false;
+	}
+
 	public bool IsPointInArea( Vector2 point )
 	{		
 		if ( m_mainPoly == null )
 			return true;
+			
+		UpdateObstacles();
+
 		foreach( PathPoly pathPoly in m_pathPolys )
 		{			
 			bool shouldBeInside = pathPoly == m_mainPoly;
-			if ( IsPointInPoly( pathPoly.m_verts, point ) != shouldBeInside )
+			if ( pathPoly.m_enabled && IsPointInPoly( pathPoly.m_verts, point ) != shouldBeInside )
 			{
 				return false;
 			}
 		}
 		return true;
 	}
-
+	
 	public Vector2[] FindPath( Vector2 pointStart, Vector2 pointEnd )
 	{
 		if ( GetValid() == false )
@@ -105,11 +148,7 @@ public class Pathfinder
 
 		List<Vector2> result = new List<Vector2>();
 
-		// Check nothing's moved, and update if it has
-		if ( m_dirty == false )
-		{
-			m_pathPolys.ForEach(pathPoly => UpdatePolyNodePosition(pathPoly));
-		}
+		UpdateObstacles();
 
 		// Check if we need to rebuild the map
 		if ( m_dirty )
@@ -193,22 +232,36 @@ public class Pathfinder
 		RemoveNode(nodeEnd);
 
 		return firstPoint;
+	}	
+
+	// Update obstacles positions and whether they're enabled or disabled
+	void UpdateObstacles()
+	{
+		foreach ( PathPoly pathPoly in m_pathPolys )
+		{
+			if ( pathPoly.m_enabled == pathPoly.m_wasEnabled )
+				continue;
+			pathPoly.m_wasEnabled = pathPoly.m_enabled;
+
+			if ( pathPoly.m_enabled )
+				AddPathPolyNodes(pathPoly);
+			else
+				RemovePathPolyNodes(pathPoly);
+
+			// TODO: only calculate links for nodes we've changed, instead of marking whole thing as dirty
+			m_dirty = true;			
+		}
+
+		m_pathPolys.ForEach(pathPoly => UpdatePolyNodePosition(pathPoly));
 	}
 
 	// for debugging (obviously)
 	public void DrawDebugLines()
 	{
-		//if ( m_mainPoly != null )
-		//{
-		//	DrawDebugPoly(m_mainPoly.m_verts, Color.cyan );
-		//}
 		foreach( PathPoly poly in m_pathPolys )
 		{
-			
-			//DrawDebugPoly( poly.m_verts, Color.red );
-			DrawDebugPoly( poly.m_vertsInflated, ( poly == m_mainPoly ) ? Color.green : Color.red );			
+			DrawDebugPoly( poly.m_vertsInflated, ( poly == m_mainPoly ) ? Color.green : (poly.m_enabled?Color.red:Color.grey) );			
 		}
-
 		
 		foreach( PathNode node in m_nodes )
 		{			
@@ -251,20 +304,29 @@ public class Pathfinder
 		}
 	}
 
-
 	PathPoly AddPolygon( PolygonCollider2D collider, bool isMain, Vector2[] pointsOverride = null )
 	{
 		if ( collider == null )
 			return null;
+		return AddPolygon( collider, collider.transform,isMain,pointsOverride);		
+	}
+	PathPoly AddPolygon( Transform transform, bool isMain, Vector2[] pointsOverride = null )
+	{
+		if ( transform == null )
+			return null;
+		return AddPolygon( null, transform,isMain,pointsOverride);		
+	}
 
+	PathPoly AddPolygon( PolygonCollider2D collider, Transform transform, bool isMain, Vector2[] pointsOverride = null )
+	{
 		m_dirty = true;
 		//
 		// Add basic pathpoly, with polygon
 		//
 		PathPoly pathPoly = new PathPoly();
 		pathPoly.m_collider = collider;
-		pathPoly.m_transform = collider.transform;
-		pathPoly.m_positionCached = collider.transform.position;
+		pathPoly.m_transform = transform;
+		pathPoly.m_positionCached = transform.position;
 
 		Vector2 positionOffset = pathPoly.m_positionCached;
 
@@ -313,6 +375,8 @@ public class Pathfinder
 	// Checks if the poly's transform has moved, and if so, updates the verts and nodes, and sets dirty flag
 	void UpdatePolyNodePosition(PathPoly pathPoly)
 	{
+		if ( pathPoly.m_enabled == false )
+			return;
 		if ( (pathPoly.m_positionCached-(Vector2)pathPoly.m_transform.position).sqrMagnitude <= float.Epsilon )
 			return;
 
@@ -461,6 +525,8 @@ public class Pathfinder
 		m_lineIntersector.SetFirstLine(pointA,pointB);
 		for ( int iPoly = 0; iPoly < m_pathPolys.Count; ++iPoly )
 		{
+			if ( m_pathPolys[iPoly].m_enabled == false )
+				continue;
 			Vector2[] verts = m_pathPolys[iPoly].m_verts;
 			int vertsLength = verts.Length;
 			Vector2 prevPoint = verts[vertsLength-1];
@@ -501,6 +567,8 @@ public class Pathfinder
 	// Finds the closer edge point to the navigation valid area - Hacked up from PolyNav2D's method
 	public Vector2 GetClosestPointToArea( Vector2 point )
 	{
+	
+		UpdateObstacles();
 
 		List<Vector2> possiblePoints= new List<Vector2>();
 		Vector2 closerVertex = Vector2.zero;
@@ -508,6 +576,9 @@ public class Pathfinder
 
 		for (int p = 0; p < m_pathPolys.Count; p++)
 		{
+			if ( m_pathPolys[p].m_enabled == false  )
+				continue;
+
 			Vector2[] poly = m_pathPolys[p].m_verts;
 			Vector2[] inflatedPoints = m_pathPolys[p].m_vertsInflated; 
 

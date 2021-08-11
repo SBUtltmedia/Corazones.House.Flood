@@ -87,7 +87,7 @@ public class RoomHome : RoomScript<RoomHome>
 		if (Globals.m_progressExample == eProgress.None) {
 			yield return C.Dave.Say("Ok Here I go...");
 		}
-		C.Dave.ChangeRoomBG(R.Cutscene);
+		C.Dave.ChangeRoomBG(R.InfoScreen);
 		yield return E.Break;
 	}
 
@@ -165,7 +165,8 @@ public class RoomHome : RoomScript<RoomHome>
 
 	IEnumerator OnInteractPropPump( IProp prop )
 	{
-		if (currentHandle == handleType.large && currentHose == hoseType.large){
+
+		if (currentHandle == handleType.large && currentHose == hoseType.large){
 		
 			Globals.m_progressExample = eProgress.RightParts;
 			lowerWater();

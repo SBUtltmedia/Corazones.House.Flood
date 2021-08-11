@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using PowerTools;
@@ -46,6 +46,17 @@ public class QuestMenuManager
 	public float GetFadeRatio()	{ return m_fadeAlpha; }
 	public Color GetFadeColor()	{ return m_fadeColour; }
 	public bool GetCustomFade() { return m_customFade; }
+
+	// Resets all fade data (game will be faded in). Used when restoring a game, etc.
+	public void ResetFade()
+	{
+		m_fadeInTime = 0;
+		m_fadeOutTime = 0;
+		m_fadeAlpha = 0;
+		m_fadeSources.Clear();
+		// Coroutines should be stopped along with this function being called.
+	}
+	
 
 	// Fade out (for main menu)
 	//////////////////////////////////////////////////////////////////////

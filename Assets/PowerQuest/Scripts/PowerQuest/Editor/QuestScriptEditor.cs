@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -44,6 +44,8 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 		public eType m_type = eType.Other;
 		// whether the current function is a coroutine, in case can't check using reflection
 		public bool m_isCoroutine = true;
+		// Offset that the cursor was last on
+		public int m_cursorIndex = 0;
 	}
 		
 	static readonly int SCRIPT_TAB_WIDTH = 4;
@@ -59,106 +61,108 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 	static readonly string STR_TABS = "\t\t";
 	static readonly string STR_TABS_HEADER = "\t";
 
-	static readonly string REGEX_YIELD_LINE_START = @"^(\s*)yield return\s";
+	static readonly string REGEX_YIELD_LINE_START = @"(?<=^\s*)yield return\s(";
 
 	// Strings that should have the "yield return" removed from the start. The first group should contain whitespace
 	static readonly string[] REGEX_YIELD_STRINGS = 
 		{
-			'(' + @"C\.\w*\.Say(?:NoSkip)?\("     +')',
-			'(' + @"\w\.Display\("                +')',
-			'(' + @"C\.\w*\.WalkTo\("             +')',
-			'(' + @"C\.(\w*\.)?WalkToClicked"     +')',
-			'(' + @"C\.(\w*\.)?Face\w*?(?<!BG)\(" +')',  // Has zero width  negative lookbehind assertion so it won't include 'BG'
-			'(' + @"C\.\w*\.PlayAnimation\("      +')',
-			'(' + @"C\.\w*\.WaitFor\w*?\("        +')',
-			'(' + @"Prop\(.+\)\.PlayAnimation\("  +')',
-			'(' + @"Prop\(.+\)\.PlayVideo\("      +')',
-			'(' + @"Prop\(.+\)\.MoveTo\("         +')',
-			'(' + @"Prop\(.+\)\.Fade\("           +')',
-			'(' + @"Prop\(.+\)\.WaitFor\w*?\("    +')',
-			'(' + @"E\.Wait"                      +')',
-			'(' + @"E\.Break"                     +')',
-			'(' + @"E\.ConsumeEvent"              +')',
-			'(' + @"E\.FadeIn\("                  +')',
-			'(' + @"E\.FadeOut\("                 +')',
-			'(' + @"E\.ChangeRoom\("              +')',
-			'(' + @"E\.Handle"                    +')',
-			'(' + @"R\.\w*\.Enter\("              +')',
+			@"C\.\w*\.Say(?:NoSkip)?\("     +')',
+			@"\w\.Display\("                +')',
+			@"C\.\w*\.WalkTo\("             +')',
+			@"C\.(\w*\.)?WalkToClicked"     +')',
+			@"C\.(\w*\.)?Face\w*?(?<!BG)\(" +')',  // Has zero width  negative lookbehind assertion so it won't include 'BG'
+			@"C\.\w*\.PlayAnimation\("      +')',
+			@"C\.\w*\.WaitFor\w*?\("        +')',
+			@"Prop\(.+\)\.PlayAnimation\("  +')', // TODO: these don't work for prop.MoveTo( style calls... needs fixing
+			@"Prop\(.+\)\.PlayVideo\("      +')',
+			@"Prop\(.+\)\.MoveTo\("         +')',
+			@"Prop\(.+\)\.Fade\("           +')',
+			@"Prop\(.+\)\.WaitFor\w*?\("    +')',
+			@"E\.Wait"                      +')',
+			@"E\.Break"                     +')',
+			@"E\.ConsumeEvent"              +')',
+			@"E\.FadeIn\("                  +')',
+			@"E\.FadeOut\("                 +')',
+			@"E\.ChangeRoom\("              +')',
+			@"E\.Handle"                    +')',
+			@"R\.\w*\.Enter\("              +')',
 	};
 	static Regex[] REGEX_YIELD_STRINGS_LOAD_COMPILED = null; // these are compiled lazily when first used
 	static Regex[] REGEX_YIELD_STRINGS_SAVE_COMPILED = null; // these are compiled lazily when first used
 			
-	static readonly string REGEX_SAVE_YIELD_REPLACE = @"$1yield return $2"; // 1 has whitespace, 2 has the content
+	static readonly string REGEX_SAVE_YIELD_REPLACE = @"yield return $1"; 
 
 	static readonly Regex[] REGEX_LOAD_MATCH = 
 		{
-			new Regex(@"^(\s*)C\.(\w*)\.Say\(\s*\$?""(.*)""\s*\);", RegexOptions.Compiled), // C.Dave.Say("Hi"); -> Dave: Hi
-			new Regex(@"^(\s*)\w\.Display\(\s*\$?""(.*)""\s*\);", RegexOptions.Compiled), // C.Display("Ho"); -> Display: Ho
-			new Regex(@"^(\s*)\w\.DisplayBG\(\s*\$?""(.*)""\s*\);", RegexOptions.Compiled), // C.DisplayBG("Ho"); -> Display: Ho
-			new Regex(@"^(\s*)\w\.Section\(\s*\$?""(.*)""\s*\);", RegexOptions.Compiled), // C.DisplayBG("Ho"); -> Display: Ho
-			new Regex(@"^(\s*)C\.(\w*)\.Say\(\s*\$?""(.*)""\s*,\s*(\d+)\s*\);", RegexOptions.Compiled), // C.Dave.Say("Hi",123); -> Dave(123): Hi
-			new Regex(@"^(\s*)\w\.Display\(\s*\$?""(.*)""\s*,\s*(\d+)\s*\);", RegexOptions.Compiled), // C.Display("Ho",456); -> Display(456): Ho
-			new Regex(@"^(\s*)\w\.DisplayBG\(\s*\$?""(.*)""\s*,\s*(\d+)\s*\);", RegexOptions.Compiled), // C.DisplayBG("Ho",456); -> Display(456): Ho
-			new Regex(@"^(\s*)E\.WaitSkip\(2\.0f\);", RegexOptions.Compiled), // E.WaitSkip(2.0f); -> ......
-			new Regex(@"^(\s*)E\.WaitSkip\(1\.5f\);", RegexOptions.Compiled), // E.WaitSkip(1.5f); -> .....
-			new Regex(@"^(\s*)E\.WaitSkip\(1\.0f\);", RegexOptions.Compiled), // E.WaitSkip(1.0f); -> ....
-			new Regex(@"^(\s*)E\.WaitSkip\(\);", RegexOptions.Compiled), 	  // E.WaitSkip();	 -> ...
-			new Regex(@"^(\s*)E\.WaitSkip\(0\.25f\);", RegexOptions.Compiled),// E.WaitSkip(0.2f); -> ..
-			new Regex(@"^(\s*)E\.Break;", RegexOptions.Compiled), // E.Break; -> End
-			new Regex(@"^(\s*)E\.ConsumeEvent;", RegexOptions.Compiled), // E.ConsumeEvent; -> Consume
-			new Regex(@"^(\s*)yield break;", RegexOptions.Compiled), // yield break; -> Return
-			new Regex(@"^(\s*)C\.(Player\.)?WalkToClicked\(\);", RegexOptions.Compiled), 	// C.Player.WalkToClicked() -> WalkToClicked
-			new Regex(@"^(\s*)C\.(Player\.)?FaceClicked\(\);", RegexOptions.Compiled), 	// C.Player.FaceClicked() -> FaceClicked
-			new Regex(@"(^|\W)Hotspot\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Hotspot("blah") -> Hotspots.blah.
-			new Regex(@"(^|\W)Prop\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Prop("blah") -> Props.blah.
-			new Regex(@"(^|\W)Region\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Region("blah") -> Regions.blah.
-			new Regex(@"(^|\W)Point\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Point("blah") -> Points.blah		
-			new Regex(@"(^|\W)Option\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Option("blah") -> O.blah.	
-			new Regex(@"(^|\W)Option\(\s*(\d+)\s*\)", RegexOptions.Compiled), 	// Option(1) -> O.1.
-			new Regex(@"(^|\W)C\.Plr\.", RegexOptions.Compiled), 	// C.Plr. -> Plr.
-			new Regex(@"(^|\W)GlobalScript\.Script\.", RegexOptions.Compiled), 	// GlobalScript.Script. -> Globals. No longer needed, but left to cleanup old scripts that might still be using GlobalScript.Script
-			new Regex(@"(^|\W)(R|C|I)(?:oom|haracter|nventory)(\w*)\.Script\.", RegexOptions.Compiled), 	// RoomKitchen.Script. => R.Kitchen.Script. (or CharacterDave => C.Dave, or InventoryBucket => I.Bucket)
+			new Regex(@"(?<=^\s*)C\.(\w*)\.Say\(\s*\$?""(.*)""\s*\);", RegexOptions.Compiled), // C.Dave.Say("Hi"); -> Dave: Hi
+			new Regex(@"(?<=^\s*)\w\.Display\(\s*\$?""(.*)""\s*\);", RegexOptions.Compiled), // C.Display("Ho"); -> Display: Ho
+			new Regex(@"(?<=^\s*)\w\.DisplayBG\(\s*\$?""(.*)""\s*\);", RegexOptions.Compiled), // C.DisplayBG("Ho"); -> Display: Ho
+			new Regex(@"(?<=^\s*)\w\.Section\(\s*\$?""(.*)""\s*\);", RegexOptions.Compiled), // C.DisplayBG("Ho"); -> Display: Ho
+			new Regex(@"(?<=^\s*)C\.(\w*)\.Say\(\s*\$?""(.*)""\s*,\s*(\d+)\s*\);", RegexOptions.Compiled), // C.Dave.Say("Hi",123); -> Dave(123): Hi
+			new Regex(@"(?<=^\s*)\w\.Display\(\s*\$?""(.*)""\s*,\s*(\d+)\s*\);", RegexOptions.Compiled), // C.Display("Ho",456); -> Display(456): Ho
+			new Regex(@"(?<=^\s*)\w\.DisplayBG\(\s*\$?""(.*)""\s*,\s*(\d+)\s*\);", RegexOptions.Compiled), // C.DisplayBG("Ho",456); -> Display(456): Ho
+			new Regex(@"(?<=^\s*)E\.WaitSkip\(2\.0f\);", RegexOptions.Compiled), // E.WaitSkip(2.0f); -> ......
+			new Regex(@"(?<=^\s*)E\.WaitSkip\(1\.5f\);", RegexOptions.Compiled), // E.WaitSkip(1.5f); -> .....
+			new Regex(@"(?<=^\s*)E\.WaitSkip\(1\.0f\);", RegexOptions.Compiled), // E.WaitSkip(1.0f); -> ....
+			new Regex(@"(?<=^\s*)E\.WaitSkip\(\);", RegexOptions.Compiled), 	  // E.WaitSkip();	 -> ...
+			new Regex(@"(?<=^\s*)E\.WaitSkip\(0\.25f\);", RegexOptions.Compiled),// E.WaitSkip(0.2f); -> ..
+			new Regex(@"(?<=^\s*)E\.Break;", RegexOptions.Compiled), // E.Break; -> End
+			new Regex(@"(?<=^\s*)E\.ConsumeEvent;", RegexOptions.Compiled), // E.ConsumeEvent; -> Consume
+			new Regex(@"(?<=^\s*)yield break;", RegexOptions.Compiled), // yield break; -> Return
+			new Regex(@"(?<=^\s*)C\.(Player\.)?WalkToClicked\(\);", RegexOptions.Compiled), 	// C.Player.WalkToClicked() -> WalkToClicked
+			new Regex(@"(?<=^\s*)C\.(Player\.)?FaceClicked\(\);", RegexOptions.Compiled), 	// C.Player.FaceClicked() -> FaceClicked
+			new Regex(@"(?<=^|\W)Hotspot\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Hotspot("blah") -> Hotspots.blah.
+			new Regex(@"(?<=^|\W)Prop\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Prop("blah") -> Props.blah.
+			new Regex(@"(?<=^|\W)Region\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Region("blah") -> Regions.blah.
+			new Regex(@"(?<=^|\W)Point\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Point("blah") -> Points.blah		
+			new Regex(@"(?<=^|\W)Option\(\s*""(\w+)""\s*\)", RegexOptions.Compiled), 	// Option("blah") -> O.blah.	
+			new Regex(@"(?<=^|\W)Option\(\s*(\d+)\s*\)", RegexOptions.Compiled), 	// Option(1) -> O.1.
+			new Regex(@"(?<=^|\W)C\.Plr\.", RegexOptions.Compiled), 	// C.Plr. -> Plr.
+			new Regex(@"(?<=^|\W)GlobalScript\.Script\.", RegexOptions.Compiled), 	// GlobalScript.Script. -> Globals. No longer needed, but left to cleanup old scripts that might still be using GlobalScript.Script
+			new Regex(@"(?<=^|\W)(R|C|I)(?:oom|haracter|nventory)(\w*)\.Script\.", RegexOptions.Compiled), 	// RoomKitchen.Script. => R.Kitchen.Script. (or CharacterDave => C.Dave, or InventoryBucket => I.Bucket)
 
 		};
 
 	static readonly string[] REGEX_LOAD_REPLACE = 
 		{
-			@"$1$2: $3",
-			@"$1Display: $2",
-			@"$1DisplayBG: $2",
-			@"$1Section: $2",
-			@"$1$2($4): $3",
-			@"$1Display($3): $2",
-			@"$1DisplayBG($3): $2",
-			@"$1......",
-			@"$1.....",
-			@"$1....",
-			@"$1...",
-			@"$1..",
-			@"$1End",
-			@"$1Consume",
-			@"$1Return",
-			@"$1WalkToClicked",
-			@"$1FaceClicked",
-			@"$1H.$2",
-			@"$1P.$2",
-			@"$1Regions.$2",
-			@"$1Points.$2",
-			@"$1O.$2",
-			@"$1O.$2",
-			@"$1Plr.",
-			@"$1Globals.",
-			@"$1$2.$3.Script.",
+			@"$1: $2",
+			@"Display: $1",
+			@"DisplayBG: $1",
+			@"Section: $1",
+			@"$1($3): $2",
+			@"Display($2): $1",
+			@"DisplayBG($2): $1",
+			@"......",
+			@".....",
+			@"....",
+			@"...",
+			@"..",
+			@"End",
+			@"Consume",
+			@"Return",
+			@"WalkToClicked",
+			@"FaceClicked",
+			@"H.$1",
+			@"P.$1",
+			@"Regions.$1",
+			@"Points.$1",
+			@"O.$1",
+			@"O.$1",
+			@"Plr.",
+			@"Globals.",
+			@"$1.$2.Script.",
 		};
 
 	// Don't match the following (exceptions to REGEX_SAVE_MATCH)
 	static readonly Regex[] REGEX_SAVE_NO_MATCH =
 		{
-			new Regex(@"^(\s*)default: (.*)", RegexOptions.Compiled),
+			new Regex(@"(?<=^\s*)default: (.*)", RegexOptions.Compiled),
 		};
 
 	static readonly Regex[] REGEX_SAVE_MATCH = 
 		{
+			new Regex(@"\s+$", RegexOptions.Compiled), // strip trailing space
+
 			// Strings with braces- these need the $ at the beggining of the string so variables can be included
 			new Regex(@"^(\s*)Section: (.*)", RegexOptions.Compiled | RegexOptions.IgnoreCase),
 			new Regex(@"^(\s*)Display: (.*\{.*)", RegexOptions.Compiled | RegexOptions.IgnoreCase), // $
@@ -199,6 +203,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 	// The $1 preserves any spacing that's at the start
 	static readonly string[] REGEX_SAVE_REPLACE = 
 		{
+			@"",	// Strip trailing space
 			@"$1C.Section(""$2"");", // C.Section("Ho"); -> Section: Ho
 			@"$1C.Display($""$2"");", // C.Display($"Ho {variable}"); -> Display: Ho {variable}
 			@"$1C.Display(""$2"");", // C.Display("Ho"); -> Display: Ho
@@ -236,25 +241,27 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 		};
 
 
-	static string STR_REPLACE_COLOR = @"$1<color=#009695>$2</color>"; // cyan : 009695 blue: 3364A4 pink: C12DAC
-	static string STR_REPLACE_COLOR_DIALOG = @"$1<color=#3364A4>$2</color><color=#F57D00>$3</color>";
+	static string STR_REPLACE_COLOR = @"<color=#009695>$1</color>"; // cyan : 009695 blue: 3364A4 pink: C12DAC
+	static string STR_REPLACE_COLOR_DIALOG = @"<color=#3364A4>$1</color><color=#F57D00>$2</color>";
 	static string STR_REPLACE_COLOR_COMMENT = @"<color=#118011>$1</color>"; // grey: 888888 green: 008000
 
 	static readonly Regex[] REGEX_COLOR_DIALOG = 
 		{
-			new Regex(@"^(\s*)(\w+:)(.*)", RegexOptions.Compiled | RegexOptions.Multiline),			// Sister: hello
-			new Regex(@"^(\s*)(\w+\(\d+\):)(.*)", RegexOptions.Compiled | RegexOptions.Multiline),	// Sister(21): hello
-			new Regex(@"()()("".*?"")", RegexOptions.Compiled | RegexOptions.Multiline) 				// "Something in quotes"
+			new Regex(@"(?<=^\s*)(\w+:)(.*)", RegexOptions.Compiled | RegexOptions.Multiline),	        // Sister: hello
+			new Regex(@"(?<=^\s*)(\w+\(\d+\):)(.*)", RegexOptions.Compiled | RegexOptions.Multiline),  // Sister(21): hello
+			new Regex(@"()((?<!<c.*)"".*?"")", RegexOptions.Compiled | RegexOptions.Multiline)    // "Something in quotes", ignoring if there's another color on the line already
 		};
 
 	static readonly Regex[] REGEX_COLOR = 
 		{
-			new Regex(@"^(\s*)(End\s*$)", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
-			new Regex(@"^(\s*)(Consume\s*$)", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
-			new Regex(@"^(\s*)(Return\s*$)", RegexOptions.Compiled | RegexOptions.Multiline),
-			new Regex(@"^(\s*)(WalkToClicked)", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
-			new Regex(@"^(\s*)(FaceClicked)", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
-			new Regex(@"^(\s*)(\.\.+)", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
+			new Regex(@"(?<=^\s*)(End\s*)$", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
+			new Regex(@"(?<=^\s*)(Consume\s*)$", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
+			new Regex(@"(?<=^\s*)(Return\s*)$", RegexOptions.Compiled | RegexOptions.Multiline),
+			new Regex(@"(?<=^\s*)(WalkToClicked\s*)$", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
+			new Regex(@"(?<=^\s*)(FaceClicked\s*)$", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
+			new Regex(@"(?<=^\s*)(\.\.+\s*)$", RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.IgnoreCase),
+			// Check for keywords. There's an extra check for any previous <color> on the same line (indicating a comment was there, not perfect, but better than nothing)
+			new Regex(@"(?<=^|\W)((?<!<c.*)(?:bool|int|float|string|Vector2|enum|if|else|while|for|switch|case|default|break|continue|new|public|private|true|false)(?!\w))", RegexOptions.Compiled | RegexOptions.Multiline),
 		};
 
 	static readonly Regex[] REGEX_COLOR_COMMENT = 
@@ -357,7 +364,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 		
 		public Color m_background = new Color(1.0f, 1.0f, 0.95f, 1);
 		public Color m_sidebar = new Color(0.93f,0.93f,0.95f,1); // TODO
-		public Color m_cursor = Color.black;
+		public Color m_cursor = Color.black;		
 	}
 
 	class Contents
@@ -811,7 +818,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 
 		if ( focusedWindow == this )
 		{	
-			if ( ev.type == EventType.MouseDown )
+			if ( ev.type == EventType.MouseDown && ev.type == 0 )
 			{
 				// When nagivate cursor with mouse, set an undo step (if was typing), and prevent autocomplete from showing up
 				if ( m_wasTyping )
@@ -819,7 +826,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 				preventAutoCompleteThisUpdate = true;
 				m_wasTyping = false;		
 			}
-
+			
 			// Ctrl+ mousewheel zooms
 			if ( ev.type == EventType.ScrollWheel && ev.control )
 			{
@@ -831,6 +838,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 				s_textStyle.fontSize = m_fontSize;
 				ev.Use();
 			}
+
 
 			if ( (ev.type == EventType.KeyDown) && FindTextEditor() != null )
 			{
@@ -999,12 +1007,16 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 		// Prev-next function in history control
 		EditorGUI.BeginDisabledGroup( m_historyIndex + 1 >= m_history.Count );
 		string prevFunc = m_history.IsIndexValid(m_historyIndex+1) ? string.Format("{1}\n{0}",m_history[m_historyIndex+1].m_file,m_history[m_historyIndex+1].m_function) : "Previous";
-		bool doPrevScript = GUILayout.Button( new GUIContent(Contents.PREV) {tooltip=prevFunc}, Styles.TOOLBAR_BUTTON, GUILayout.Width(25) ); 
+		bool doPrevScript = GUILayout.Button( new GUIContent(Contents.PREV) {tooltip=prevFunc}, Styles.TOOLBAR_BUTTON, GUILayout.Width(25) ); 		
+		if ( ev.type == EventType.KeyDown && ev.alt && ev.keyCode == KeyCode.LeftArrow && focusedWindow == this )
+			doPrevScript = true;
 		EditorGUI.EndDisabledGroup();
 		EditorGUI.BeginDisabledGroup( m_historyIndex <= 0 );
 		string nextFunc = m_history.IsIndexValid(m_historyIndex-1) ? string.Format("{1}\n{0}",m_history[m_historyIndex-1].m_file,m_history[m_historyIndex-1].m_function) : "Next";
 		GUI.tooltip = "Next function";
 		bool doNextScript = GUILayout.Button( new GUIContent(Contents.NEXT) {tooltip=nextFunc}, Styles.TOOLBAR_BUTTON, GUILayout.Width(25) );
+		if ( ev.type == EventType.KeyDown && ev.alt && ev.keyCode == KeyCode.RightArrow && focusedWindow == this )
+			doNextScript = true;
 		EditorGUI.EndDisabledGroup();
 
 		// Auto load toggle
@@ -1277,7 +1289,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 
 		//
 		// Layout the editable text area
-		//
+		//		
 		m_text = WithoutSelectAll(() => EditorGUI.TextArea( rect, m_text, s_textStyle));
 
 		if ( oldCursorIndex >= 0 )
@@ -1287,8 +1299,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 		}
 		GUI.skin.settings.cursorColor = cursorColor;
 		GUI.skin.settings.selectionColor = selectionColor;
-
-
+		
 		bool updateTextDisplay = false;
 		if ( EditorGUI.EndChangeCheck() )
 		{
@@ -1330,8 +1341,8 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 
 		//
 		// Update scroll position based on cursor
-		//
-		if ( tEditor != null && m_scrollingCursorIndexCached != tEditor.cursorIndex && ev.type == EventType.Repaint) // have to check it's a repaint frame, cause the sroll rect is invalid otherwise
+		//				
+		if ( tEditor != null && m_scrollingCursorIndexCached != tEditor.cursorIndex && ev.type == EventType.Repaint && focusedWindow == this ) // have to check it's a repaint frame, cause the sroll rect is invalid otherwise
 		{
 			m_scrollingCursorIndexCached = tEditor.cursorIndex;
 			// Scroll to keep text on screen - Build the rect that we want to keep inside of. Start with the scroll-rect and offset by scroll pos, then add borders
@@ -1348,9 +1359,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 				m_scrollPosition -= scrollOffset;
 				Repaint(); // need to repaint if we've moved
 			}
-
 		}
-
 
 		//GUILayout.Space(10);
 
@@ -1388,7 +1397,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 			}
 		}
 
-		if ( doCarriageReturn || doAutoComplete || tabEvent != eTabEvent.None )
+		if ( doCarriageReturn || doAutoComplete || tabEvent != eTabEvent.None || doPrevScript || doNextScript )
 			Repaint();
 	} 
 
@@ -1751,6 +1760,9 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 			// update history - TODO: If found in list already, ignore
 			if ( m_history.IsIndexValid(m_historyIndex) )
 			{
+				if ( m_textEditor != null)
+					m_history[m_historyIndex].m_cursorIndex = m_textEditor.cursorIndex;
+
 				if ( m_history[m_historyIndex] != fileData )
 				{
 					// New thing to add
@@ -1894,7 +1906,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 
 			foreach ( Regex regex in REGEX_YIELD_STRINGS_LOAD_COMPILED )
 			{
-				line = regex.Replace( line, "$1$2");
+				line = regex.Replace( line, "$1");
 			}
 
 			//
@@ -1975,7 +1987,7 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 				{				
 					REGEX_YIELD_STRINGS_SAVE_COMPILED = new Regex[REGEX_YIELD_STRINGS.Length];
 					for ( int i = 0; i < REGEX_YIELD_STRINGS.Length; ++i )
-						REGEX_YIELD_STRINGS_SAVE_COMPILED[i] = new Regex(@"(^\s*)"+REGEX_YIELD_STRINGS[i], RegexOptions.Compiled | RegexOptions.Multiline );
+						REGEX_YIELD_STRINGS_SAVE_COMPILED[i] = new Regex(@"(?<=^\s*)("+REGEX_YIELD_STRINGS[i], RegexOptions.Compiled | RegexOptions.Multiline );
 				}
 
 				foreach ( Regex regexStr in REGEX_YIELD_STRINGS_SAVE_COMPILED )
@@ -2078,12 +2090,12 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 		
 		STR_REPLACE_COLOR =
 			System.String.Format(
-				@"$1<color=#{0}>$2</color>",
+				@"<color=#{0}>$1</color>",
 				ColorUtility.ToHtmlStringRGB(m_colors.m_event)
 			);
 		STR_REPLACE_COLOR_DIALOG =
 			System.String.Format(
-				@"$1<color=#{0}>$2</color><color=#{1}>$3</color>",
+				@"<color=#{0}>$1</color><color=#{1}>$2</color>",
 				ColorUtility.ToHtmlStringRGB(m_colors.m_speaker),
 				ColorUtility.ToHtmlStringRGB(m_colors.m_dialog)
 			);
@@ -2102,19 +2114,20 @@ public partial class QuestScriptEditor : EditorWindow, IHasCustomMenu
 
 	void UpdateRichText() 
 	{  
+		// TODO: do this line by line, and when editing code, just edit that line (also this means can handle longer comments)
 		m_richText = m_text;
-		foreach( Regex pattern in REGEX_COLOR )
-		{
-			m_richText = pattern.Replace(m_richText, STR_REPLACE_COLOR);
-		}
-		foreach( Regex pattern in REGEX_COLOR_DIALOG )
-		{
-			// Spell check strings
-			m_richText = pattern.Replace(m_richText, STR_REPLACE_COLOR_DIALOG);
-		}
 		foreach( Regex pattern in REGEX_COLOR_COMMENT )
 		{
 			m_richText = pattern.Replace(m_richText, STR_REPLACE_COLOR_COMMENT);
+		}
+		// TODO: don't colour things that are between comments.
+		foreach( Regex pattern in REGEX_COLOR_DIALOG )
+		{
+			m_richText = pattern.Replace(m_richText, STR_REPLACE_COLOR_DIALOG);
+		}
+		foreach( Regex pattern in REGEX_COLOR )
+		{
+			m_richText = pattern.Replace(m_richText, STR_REPLACE_COLOR);
 		}
 	}
 

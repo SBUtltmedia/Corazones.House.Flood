@@ -24,6 +24,7 @@ public partial class QuestCursor : ICursor
 	[SerializeField] string m_animationNonClickable = "Idle";
 	[SerializeField] string m_animationUseInv = "UseInv";
 	[SerializeField] string m_animationOverGui = "Idle";
+	[SerializeField] string m_animationWait = "Wait";
 	[SerializeField] Color m_inventoryOutlineColor = new Color(1,1,1,0);
 	[Tooltip("If true, the cursor will be hidden when the game isn't interactive")]
 	[SerializeField] bool m_hideWhenBlocking = true;
@@ -76,6 +77,11 @@ public partial class QuestCursor : ICursor
 	{ 
 		get{ return m_animationOverGui; } 
 		set{ m_animationOverGui = value; }
+	}
+	public string AnimationWait
+	{ 
+		get{ return m_animationWait; } 
+		set{ m_animationWait = value; }
 	}
 
 	public bool HideWhenBlocking { get {return m_hideWhenBlocking; } set{m_hideWhenBlocking = value;} }
@@ -168,6 +174,12 @@ public class QuestCursorComponent : MonoBehaviour
 	{
 		newAnim = null;
 		outlineColor = new Color(1,1,1,0);
+
+		if ( PowerQuest.Get.GetBlocked() && PowerQuest.Get.GetCurrentDialog() == null )
+		{
+			newAnim = m_data.AnimationWait;
+			return;
+		}
 
 		// If dialog is up, only show animation over-gui (should use the "modal" check for this really)
 		if ( PowerQuest.Get.GetModalGuiActive() )

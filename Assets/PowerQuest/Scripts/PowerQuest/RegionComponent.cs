@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.Serialization;
 using System.Collections;
 using System.Collections.Generic;
@@ -214,7 +214,7 @@ public class RegionComponent : MonoBehaviour
 	{
 		if ( m_polygonCollider == null )
 			m_polygonCollider = GetComponent<PolygonCollider2D>();
-		m_data.GetCharacterOnRegionMask().Length = PowerQuest.Get.GetCharacterPrefabs().Count; // kind of hacky way to get this info :/
+		m_data.GetCharacterOnRegionMask().Length = PowerQuest.Get.GetCharacters().Count; // kind of hacky way to get this info :/
 		m_data.GetCharacterOnRegionMaskOld().Length = m_data.GetCharacterOnRegionMask().Length;
 
 		// Find min and max points of collider

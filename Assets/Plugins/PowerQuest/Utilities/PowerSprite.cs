@@ -30,7 +30,8 @@ public class PowerSprite : MonoBehaviour
 	static Shader s_shader = null;
 	static Shader s_shaderOutline = null;
 	Material m_materialCached = null;
-	bool m_outlineEnabled = false;
+	bool m_outlineEnabled = false;	
+	SpriteAnimNodes m_nodes = null;
 
 	#endregion
 	#region Funcs: Public
@@ -134,6 +135,30 @@ public class PowerSprite : MonoBehaviour
 		UpdateOffset();
 	}
 
+	// Gets the world position of a sprite anim node, with the sprite offset included.
+	public Vector2 GetNodePosition(int node)
+	{
+
+		// Lazy get the nodes component
+		if ( m_nodes == null )
+			m_nodes = GetComponent<SpriteAnimNodes>();
+			
+		Vector2 spriteOffset = Offset;
+		spriteOffset.Scale(transform.localScale);
+		Vector2 result = spriteOffset;
+
+		if ( m_nodes == null )
+		{
+			// Just return position with sprite offset
+			result += (Vector2)transform.position;
+		}
+		else 
+		{
+			result += (Vector2)m_nodes.GetPosition(node);
+		}
+		return result;
+	}
+
 	#endregion
 	#region Funcs: Private/Internal
 
@@ -145,7 +170,8 @@ public class PowerSprite : MonoBehaviour
 	void OnValidate()
 	{
 		// DL TODO: Apparently OnValidate can cause slowdowns on saving in the editor? 
-		{
+		{		
+			CheckMaterial(true);
 			UpdateTint();
 			UpdateOutline();
 			UpdateOffset();
@@ -161,7 +187,7 @@ public class PowerSprite : MonoBehaviour
 		UpdateOffset();
 	}
 
-	bool CheckMaterial()
+	bool CheckMaterial(bool onValidate = false)
 	{
 
 		// Apply outline if it hadn't been previously enabled, but is set
@@ -181,10 +207,9 @@ public class PowerSprite : MonoBehaviour
 		Shader shader = m_shaderOverride != null ? m_shaderOverride : shouldApplyOutline ? s_shaderOutline : s_shader;
 
 		SpriteRenderer renderer = GetComponent<SpriteRenderer>();
-		Debug.Log(renderer);
 		if ( renderer != null && shader != null)
 		{			
-			if ( Application.isPlaying == false )
+			if ( Application.isPlaying == false || (Application.isEditor && onValidate))
 				m_materialCached = renderer.sharedMaterial;
 			else 
 				m_materialCached = renderer.material;

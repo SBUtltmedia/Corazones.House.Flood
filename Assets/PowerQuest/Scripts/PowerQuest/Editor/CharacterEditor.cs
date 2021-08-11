@@ -53,6 +53,15 @@ public class CharacterComponentEditor : Editor
 	{		
 		CharacterComponent component = (CharacterComponent)target;
 		QuestClickableEditorUtils.OnSceneGUI( component, component.GetData() );
+		
+		if ( component.GetData().EditorGetSolid() )
+		{
+			Handles.color = Color.yellow;
+			Vector2[] points = component.CalcSolidPoly();		
+			Vector2 pos = component.transform.position;
+			for (int i = 0; i < points.Length; i++)
+				Handles.DrawLine( pos+points[i], pos+(points[(i + 1) % points.Length]) );
+		}
 	}
 
 

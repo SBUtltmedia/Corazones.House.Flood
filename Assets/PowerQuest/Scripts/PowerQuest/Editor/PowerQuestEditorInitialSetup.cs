@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -133,8 +133,12 @@ public partial class PowerQuestEditor
 		{
 			LoadRoomScene(GetPowerQuest().GetRoomPrefabs()[0]);
 		}
+		
+		// NB: This file exists for upgrades, but must be removed
+		AssetDatabase.DeleteAsset(@"Assets\Plugins\PowerSpriteImport\Editor\PowerSpriteImportEditor.cs");		
 
 		Repaint();
+
 	}
 
 	#endregion
@@ -299,6 +303,22 @@ public partial class PowerQuestEditor
 				// update project settings to set webgl setting
 				PowerQuestProjectSetupUtil.SetProjectSettings();
 			}
+			if ( oldVersion < Version(0,13,6) )
+			{
+			
+				// Actually- just show a prompt
+				EditorUtility.DisplayDialog(
+					"PowerQuest Updated!",
+					"Important note! The character Show() and Enable() functions have changed subtly. They no longer override the 'Clickable' property you have set. \n\nEg. If you've specifically set 'Clickable = false;' then call 'Show();' the character will stay non-clickable.\n\n---\n\nLook at the online documentation for more info and a full list of changes!\n",
+					"Got it!");
+			}
+
+			if (oldVersion < Version(0,14,5))
+			{
+				// Delete old version of PowerSpriteImportEditor				
+				AssetDatabase.DeleteAsset(@"Assets\Plugins\PowerSpriteImport\Editor\PowerSpriteImportEditor.cs");				
+			}
+
 		}
 		catch ( System.Exception e )
 		{

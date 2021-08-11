@@ -1,4 +1,4 @@
-﻿using Microsoft.CSharp;
+using Microsoft.CSharp;
 using System.CodeDom.Compiler;
 using System.Reflection;
 using System.Text;
@@ -31,6 +31,12 @@ public static class QuestEditorExtentionUtils
 			self.AddDisabledItem(new GUIContent(name));
 		return self;
 	}
+	// Extention for adding generic menu items
+	public static GenericMenu AddItemToggle(this GenericMenu self, string name, bool on, GenericMenu.MenuFunction function)
+	{
+		self.AddItem(new GUIContent(name), on, function);
+		return self;
+	}
 }
 
 public class QuestEditorUtils
@@ -38,22 +44,27 @@ public class QuestEditorUtils
 
 	static readonly string TEMPLATE_FUNCTION = "\n\tvoid #FUNC#(#PARAM#)\n\t{\n\t}\n";
 	static readonly string TEMPLATE_COROUTINE = "\n\tIEnumerator #FUNC#(#PARAM#)\n\t{\n\n\t\tyield return E.Break;\n\t}\n";
-	static readonly string TEMPLATE_NEW_FUNCTION = "\n\t#FUNC#\n\t{\n\t}\n";
-	static readonly string TEMPLATE_NEW_COROUTINE = "\n\t#FUNC#\n\t{\n\n\t\tyield return E.Break;\n\t}\n";
+	static readonly string TEMPLATE_NEW_FUNCTION = "\n\tpublic #FUNC#\n\t{\n\t}\n";
+	static readonly string TEMPLATE_NEW_COROUTINE = "\n\tpublic #FUNC#\n\t{\n\n\t\tyield return E.Break;\n\t}\n";
 
 	#endregion
 	#region Gui Layout utils
 	
-
-	public static void LayoutQuestObjectContextMenu( eQuestObjectType questObjectType, ReorderableList list, string scriptName,  GameObject prefab, Rect rect, int index )
+	public static void LayoutQuestObjectContextMenu( eQuestObjectType questObjectType, ReorderableList list, string scriptName,  GameObject prefab, Rect rect, int index,bool onRightClick, System.Action<GenericMenu,GameObject> addItemsCallback=null )
 	{			
-		if ( Event.current.isMouse && Event.current.button == 1 && rect.Contains(Event.current.mousePosition) )
+		if ( onRightClick== false || (Event.current.isMouse && Event.current.button == 1 && rect.Contains(Event.current.mousePosition) ) )
 		{
 			list.index = index;
 			GenericMenu menu = new GenericMenu();
 			menu.AddDisabledItem(new GUIContent(questObjectType.ToString() + ' ' + scriptName),false);
+			
+			if ( addItemsCallback != null )
+				addItemsCallback(menu,prefab);
+
 			menu.AddSeparator("");
 			
+			if ( questObjectType < eQuestObjectType.Gui )
+				menu.AddItemToggle("Highlight", PowerQuestEditor.IsHighlighted(prefab),()=>PowerQuestEditor.ToggleHighlight(prefab) );
 			menu.AddItem("Rename", !Application.isPlaying, ()=>{
 				ScriptableObject.CreateInstance< RenameQuestObjectWindow >().ShowQuestWindow(
 					prefab, questObjectType, scriptName, PowerQuestEditor.OpenPowerQuestEditor().RenameQuestObject );});		
@@ -70,6 +81,7 @@ public class QuestEditorUtils
 							PowerQuestEditor.SCRIPT_PARAMS_LOOKAT_HOTSPOT);});
 			}	
 			*/
+
 			menu.ShowAsContext();			
 			Event.current.Use();	
 		}
@@ -324,11 +336,12 @@ public class QuestEditorUtils
 	// For removing objects from the global script
 	public static bool RemoveLineFromFile( string path, string toRemoveType, string toRemoveObjName )
 	{
+		Regex regex = new Regex( $"{toRemoveType}\\s+{toRemoveObjName}\\s+", RegexOptions.Compiled); // Match: "Room Forest "
 		try 
 		{
 			// read in contents of file	
-			List<string> allText = new List<string>(File.ReadAllLines(path));
-			allText.RemoveAll( item => item.Contains(toRemoveType) && item.Contains(toRemoveObjName) );
+			List<string> allText = new List<string>(File.ReadAllLines(path));			
+			allText.RemoveAll( item => regex.IsMatch(item) );
 			WriteAllLines(path,allText);
 		}
 		catch ( System.Exception e )
@@ -374,7 +387,7 @@ public class QuestEditorUtils
 			{
 				File.WriteAllText(path, fileTemplateText);
 				foundFile = true;
-				AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+				PowerQuestEditor.GetPowerQuestEditor().RequestAssetRefresh(); //AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);				
 			}
 			catch (System.Exception ex)
 			{ 
@@ -439,7 +452,7 @@ public class QuestEditorUtils
 			{
 				File.WriteAllText(path, fileTemplateText);
 				foundFile = true;
-				AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+				PowerQuestEditor.GetPowerQuestEditor().RequestAssetRefresh(); //AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
 			}
 			catch (System.Exception ex)
 			{ 
@@ -630,8 +643,8 @@ public class QuestEditorUtils
 	#endregion
 	#region Functions: Hotloading/Compiling
 
-	static readonly Regex REGEX_GLOBALS =  new Regex(@"(^|\W)Globals\.", RegexOptions.Compiled);
-	static readonly string REGEX_GLOBALS_REPLACE =  @"$1GlobalScript.Script."; // Globals.blah -> GlobalScript.Script.blah
+	static readonly Regex REGEX_GLOBALS =  new Regex(@"(?<!\w)Globals\.", RegexOptions.Compiled); // zero width negative look behind fun. quicker than capturing group
+	static readonly string REGEX_GLOBALS_REPLACE =  @"GlobalScript.Script."; // Globals.blah -> GlobalScript.Script.blah
 
 	// Compile passed files
 	public static Assembly CompileFiles(string[] paths)
@@ -639,13 +652,21 @@ public class QuestEditorUtils
 		var provider = new CSharpCodeProvider();
 		var param = new CompilerParameters();
 
+		
+		EditorUtility.DisplayProgressBar("Compiling","Loading files",0.2f);
+
+		// string[] ignoreAssemblies = {"ARModule","ClothModule","AIModule","Terrain","Web","VRModule","Vehicles","Wind","XR","Google",".VR",".OSX","Linux"}; - don't think this makes a difference
+
 		// Add ALL of the assembly references (except dynamic ones, they crash)
 		foreach (var assembly in System.AppDomain.CurrentDomain.GetAssemblies())
 		{
 			try 
 			{
+				//bool contains = System.Array.Exists(ignoreAssemblies, item=>assembly.FullName.Contains(item)); // don't think this optimisastion makes any difference
+				//if ( contains == false )					
 				param.ReferencedAssemblies.Add(assembly.Location);
-			}			
+				
+			}
 			catch (System.NotSupportedException)
 			{
 				// Some assemblies don't let you use assembly.Location. These should be ignored
@@ -655,32 +676,35 @@ public class QuestEditorUtils
 		// Ignore all warnings when compiling while testing
 		param.TreatWarningsAsErrors = false;
 		param.WarningLevel = 0;
+		param.IncludeDebugInformation = true; // Not sure whether to unclude this or not tbh
 
 		// Generate a dll in memory
 		param.GenerateExecutable = false;
 		param.GenerateInMemory = true;
-
-		// Load all files into strings, so we can do some find/replace on them to fix some stuff
+		
+		// Load all files into strings, so we can do some find/replace on them to fix some stuff - Takes about 0 sec
 		string[] sources = new string[paths.Length];
 		for (int i = 0; i < paths.Length; ++i)
 		{
 			try
-			{
+			{				
 				sources[i] = File.ReadAllText(paths[i]);
 			}
 			catch
 			{
 				Debug.LogError("Failed to read source file at: "+paths[i]);				
 			}
-
 		}
+		
 		// Now replace "Globals." with "GlobalScript.Script.", since otherwise the "GlobalScript" referenced will come from the wrong assembly
-		for ( int i = 0; i < paths.Length; ++i )
+		for ( int i = 0; i < sources.Length; ++i )
 		{
 			sources[i] = REGEX_GLOBALS.Replace(sources[i],REGEX_GLOBALS_REPLACE);
 		}
+		
 
 		// Compile the source		
+		EditorUtility.DisplayProgressBar("Compiling","Compiling Files",0.4f); // Takes about 3 sec (of 6 total)
 		//var result = provider.CompileAssemblyFromFile(param,paths);
 		var result = provider.CompileAssemblyFromSource(param,sources);
 
@@ -721,16 +745,11 @@ error.ErrorNumber, error.ErrorText), error.FileName,  error.Line, error.Column }
 		param.TreatWarningsAsErrors = false;
 		param.WarningLevel = 0;
 		//param.CompilerOptions = "-nowarn:436";
-
-		// Add specific assembly references
-		//param.ReferencedAssemblies.Add("System.dll");
-		//param.ReferencedAssemblies.Add("CSharp.dll");
-		//param.ReferencedAssemblies.Add("UnityEngines.dll");
-
+		
 		// Generate a dll in memory
 		param.GenerateExecutable = false;
 		param.GenerateInMemory = true;
-
+		param.IncludeDebugInformation = true;
 
 		// Compile the source
 		var result = provider.CompileAssemblyFromFile(param, path);

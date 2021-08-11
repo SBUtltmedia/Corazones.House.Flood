@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 using System.Collections;
 using System.Collections.Generic;
@@ -74,7 +74,8 @@ public partial class PowerQuest
 		int restoredVersion = -1;
 
 		// Stop all coroutines
-		StopAllCoroutines();		
+		StopAllCoroutines();				
+		GetMenuManager().ResetFade(); // Reset fade, so if faded out when restored the game doesn't start faded out. Note that this means you might want to do another 'FadeOutBG(0)' after this function is called, if you want a slower fadein.
 		m_consumedInteraction = null;
 		m_coroutineMainLoop = null;
 		m_backgroundSequence = null;
@@ -234,7 +235,7 @@ public partial class PowerQuest
 
 			// unblock again
 			Unblock();
-
+			
 			// Need to load the scene the player's in, and start main loop
 			StartRoomTransition((Room)GetPlayer().Room, true);
 		}

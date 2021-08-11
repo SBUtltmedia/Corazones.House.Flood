@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
@@ -43,7 +43,7 @@ public partial class QuestScriptEditor
 	public static void InitSpellCheck(bool force = false)
 	{		
 		// Initialise spellchecker word list
-		if ( SpellCheckEnabled && m_spellCheck == null )
+		if ( SpellCheckEnabled && (m_spellCheck == null || force) )
 		{
 			// find dictionatry 			
 			string path = SpellCheckDictionaryPath;			
@@ -195,7 +195,7 @@ public partial class QuestScriptEditor
 			MatchCollection matches = pattern.Matches(m_text);
 			foreach ( Match match in matches )
 			{
-				Group dialogGroup = match.Groups[3];
+				Group dialogGroup = match.Groups[2];
 				string dialog = dialogGroup.Value;				
 				//Debug.Log(dialog);
 				var words = Regex.Matches(dialog,@"[\w'-]+");

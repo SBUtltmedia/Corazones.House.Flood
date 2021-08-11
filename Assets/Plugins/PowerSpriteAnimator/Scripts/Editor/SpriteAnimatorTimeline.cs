@@ -1,4 +1,4 @@
-﻿//-----------------------------------------
+//-----------------------------------------
 //          PowerSprite Animator
 //  Copyright © 2017 Powerhoof Pty Ltd
 //			  powerhoof.com
@@ -1270,7 +1270,7 @@ public partial class SpriteAnimator
 	#endregion
 	#region Funcs: Private
 
-    public static string ToTimelineLabelString( float seconds, float sampleRate ) 
+    static string ToTimelineLabelString( float seconds, float sampleRate ) 
     {
 		return string.Format( "{0:0}:{1:00}",Mathf.FloorToInt(seconds),(seconds%1.0f)*100.0f );
     }

@@ -1,4 +1,4 @@
-﻿//-----------------------------------------
+//-----------------------------------------
 //          PowerSprite Animator
 //  Copyright © 2017 Powerhoof Pty Ltd
 //			  powerhoof.com
@@ -58,13 +58,13 @@ public partial class SpriteAnimator
 
 
 		// Speed/Framerate
-        GUI.SetNextControlName("Framerate");
-		float newFramerate = EditorGUILayout.DelayedFloatField( "Sample Rate", m_clip.frameRate );
+		GUI.SetNextControlName("Framerate");
+		float newFramerate = Mathf.Max(1,EditorGUILayout.DelayedFloatField( "Sample Rate", m_clip.frameRate ));
 		if ( Mathf.Approximately( newFramerate, m_clip.frameRate ) == false )
 		{
 			ChangeFrameRate(newFramerate, true);
 		}
-        GUI.SetNextControlName("Length");
+		GUI.SetNextControlName("Length");
 		float oldLength = Utils.Snap( m_clip.length, 0.001f );
 		float newLength = Utils.Snap( EditorGUILayout.FloatField( "Length (sec)", oldLength ), 0.001f );
 		if ( Mathf.Approximately( newLength, oldLength ) == false && newLength > 0 )

@@ -237,7 +237,7 @@ public class SystemAudio : SingletonAuto<SystemAudio>
 		if ( cueClip == null )
 			return new AudioHandle(null);
 
-		if ( Application.isPlaying && PowerQuest.Get.GetSkipCutscene() && cue.m_loop == false ) // Quest hack- don't play sounds while skipping cutscenes
+		if ( Application.isPlaying && PowerQuest.Get.GetSkippingCutscene() && cue.m_loop == false && ((int)AudioCue.eAudioType.Music & cue.m_type) == 0 ) // Quest hack- don't play sounds while skipping cutscenes
 			return new AudioHandle(null);
 
 		if ( Random.value > cue.m_chance )
@@ -770,6 +770,10 @@ public class SystemAudio : SingletonAuto<SystemAudio>
 	#endregion
 	#region Public, advanced Functions
 
+	public bool GetAnyMusicPlaying() 
+	{		
+		return m_activeAudio.Exists( item=> (item.type&(int)AudioCue.eAudioType.Music)>0  );
+	}
 
 	/// Advanced function to retrieve a cue's default volume
 	public float GetCueVolume(AudioCue cue, AudioClip specificClip = null)

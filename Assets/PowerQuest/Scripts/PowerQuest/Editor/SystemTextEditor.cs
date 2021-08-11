@@ -7,6 +7,9 @@ using System.Text.RegularExpressions;
 using System.IO;
 using PowerTools.Quest;
 using PowerTools;
+using System.Reflection;
+using System.Linq;
+using System;
 
 namespace PowerTools.Quest
 {
@@ -69,10 +72,10 @@ public class SystemTextEditor : Editor
 			margin-right: auto;
 			margin-left: auto;
 
-		    list-style: none;
-		    max-width: 700px;
-		    background: #fff;
-		    padding: 5px 14px;
+			list-style: none;
+			max-width: 700px;
+			background: #fff;
+			padding: 5px 14px;
 			text-align: left;
 		}
 		li { font: 12px/14px Courier, fixed; }
@@ -100,16 +103,17 @@ public class SystemTextEditor : Editor
 	[SerializeField] bool m_processDialogOnly = true;
 	[SerializeField] string[] m_exportCharacters = null;
 	[SerializeField] string[] m_exportRooms = null;
+	
+	[Tooltip("Comma separated list of language codes. Case sensitive, use the same case you put in Languages' codes")]
+	[SerializeField] string[] m_exportLanguages = null;
 
 	string m_currSourceFile = null;
 
 	public override void OnInspectorGUI()
-	{
-		
+	{		
 		m_component = (SystemText)target;
 
 		EditorGUILayout.LabelField("Process Game Text From Scripts",EditorStyles.boldLabel);
-
 
 		string helpText = string.Empty;
 		if ( m_preserveIds )
@@ -160,6 +164,17 @@ public class SystemTextEditor : Editor
 			}
 		}
 
+		// Languages
+		{
+			EditorGUI.BeginChangeCheck();
+			string inLabels = (m_exportLanguages != null && m_exportLanguages.Length > 0) ?  string.Join(LABEL_DELIMITER_READ, m_exportLanguages) : "";
+			string outLabels = EditorGUILayout.TextField("Languages", inLabels);
+			if ( EditorGUI.EndChangeCheck() )
+			{
+				m_exportLanguages = outLabels.Split(LABEL_DELIMITER_WRITE, System.StringSplitOptions.RemoveEmptyEntries).Distinct().ToArray<string>();
+			}
+		}
+
 		if ( GUILayout.Button("Generate Script") )
 		{
 			GenerateScript( m_component );
@@ -193,7 +208,7 @@ public class SystemTextEditor : Editor
 		{
 			ProcessAllText(m_component, m_preserveIds, m_processDialogOnly);			
 
-        	//m_targetObject.ApplyModifiedProperties();	
+			//m_targetObject.ApplyModifiedProperties();	
 			EditorUtility.SetDirty(target);	
 
 			AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
@@ -209,20 +224,20 @@ public class SystemTextEditor : Editor
 		{
 			string[] files = Directory.GetFiles(startingDirectory);
 			for ( int j = 0; j < files.Length; ++j )
-       		{
-       			string file = files[j];
+			{
+				string file = files[j];
 				if ( file.EndsWith(extention) )
 				{
 					paths.Add(file);
 				}
-	       	}
+			}
 
 			string[] directories = Directory.GetDirectories(startingDirectory);
 			for ( int i = 0; i < directories.Length; ++i )
-		   	{
-		   		string dir = directories[i];
+			{
+				string dir = directories[i];
 				GetFilePaths(dir, extention, ref paths);
-		   	}
+			}
 		}
 		catch (System.Exception excpt)
 		{
@@ -265,6 +280,13 @@ public class SystemTextEditor : Editor
 	{
 		if ( PowerQuestEditor.IsReady() == false )
 			return;
+			
+		if ( PowerQuestEditor.GetPowerQuestEditor().GetSmartCompileRequired() )
+		{
+			AssetDatabase.Refresh(ImportAssetOptions.ForceUpdate);
+			EditorUtility.DisplayDialog("Asset database requires import", "The asset database requires updating first, wait a few seconds then try again ;)","Ok");
+			return;
+		}
 
 		// Clear list of processed files before starting processing again
 		m_processedFiles.Clear();
@@ -346,7 +368,7 @@ public class SystemTextEditor : Editor
 						item.Text = AddStringWithEmbeddedId(item.Text); 
 					} );				
 			}
-		}
+		}		
 
 		// Process Game script
 		m_currSourceFile = "Global Script";
@@ -363,7 +385,10 @@ public class SystemTextEditor : Editor
 				foreach ( GuiComponent item  in childComponents )
 				{
 					item.GetData().Description = AddStringWithEmbeddedId(item.GetData().Description);
-				}				
+				}
+
+				// Look for [QuestLocalizable] attribute in guis. This attribute/function/system could be extended to more random components I guess.
+				//ProcessLocalizableFieldAttributes(component.transform);
 			}
 		}
 
@@ -375,13 +400,16 @@ public class SystemTextEditor : Editor
 
 			// Process all "SystemText.Localise" calls in game directory (that haven't been processed yet)
 			List<string> paths = new List<string>();
-			GetFilePaths(@"Assets\Game", ".cs", ref paths );
+			GetFilePaths(@Path.Combine("Assets", "Game"), ".cs", ref paths );
 			foreach( string path in paths)
 			{
 				m_currSourceFile = Path.GetFileNameWithoutExtension(path);
 				m_lastFunction = "";
 				ProcessFile(path);
 			}
+
+			// Look for [QuestLocalizable] attribute. I assume this will be suuuuuuper slow lol.
+			ProcessLocalizableFieldAttributes();
 		}
 	}
 
@@ -485,6 +513,7 @@ public class SystemTextEditor : Editor
 			GameObject obj = AssetDatabase.LoadMainAssetAtPath(paths[i]) as GameObject;
 			if ( obj != null )
 			{						
+				bool dirty = false;
 				m_lastFunction = "Text in "+ obj.name;
 				QuestText[] textObjects = obj.GetComponentsInChildren<QuestText>(true);
 				foreach( QuestText textObj in textObjects )
@@ -492,17 +521,113 @@ public class SystemTextEditor : Editor
 					if ( textObj.GetShouldLocalize() )
 					{
 						textObj.SetText( AddStringWithEmbeddedId(textObj.GetUnlocalizedText()) );
+						dirty = true;
 					}
 				}
+				if ( dirty )
+					EditorUtility.SetDirty(obj);	
 			}
 		}
 	}
 
+	void ProcessLocalizableFieldAttributes()
+	{
+		List<string> paths = new List<string>();
+		GetFilePaths("Assets", ".prefab", ref paths );
+
+		for ( int i = 0; i < paths.Count; ++i )
+		{
+			GameObject obj = AssetDatabase.LoadMainAssetAtPath(paths[i]) as GameObject;
+			if ( obj != null )
+			{
+				m_lastFunction = "Text in "+ obj.name;				
+				if ( ProcessLocalizableFieldAttributes(obj.transform) )
+					EditorUtility.SetDirty(obj);	
+					
+			}
+		}
+	}
+
+	// Finds [QuestLocalizable] attribute on string fields, and adds that text to system. returns true if found
+	public bool ProcessLocalizableFieldAttributes(Transform transform, bool root = true)
+	{
+		bool result = false;
+		for ( int i = 0; i < transform.childCount; ++i )
+			result |= ProcessLocalizableFieldAttributes(transform.GetChild(i), false );
+
+		Component[] components = transform.GetComponents<Component>();
+		
+		BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+		foreach( Component component in components) 
+		{
+			foreach(FieldInfo fieldInfo in component.GetType().GetFields(flags))
+			{
+				if ( fieldInfo.GetCustomAttributes(typeof(QuestLocalizeAttribute),true).Count() > 0 )
+				{					
+					if ( fieldInfo.FieldType == typeof(string))
+					{
+						string val = fieldInfo.GetValue(component) as string;
+						if ( string.IsNullOrEmpty(val) == false )
+						{
+							val = AddStringWithEmbeddedId(val);
+							fieldInfo.SetValue(component, val); 
+							// Debug.Log("Found: "+ val);
+							result = true;
+						}
+					}
+				}
+			}
+		}
+		return result;
+	}
+
 	static readonly string STR_ROOM = "Room- ";
+
+
+	private string[] GetLanguageCodes(SystemText systemText) { return systemText.GetLanguages().Select(language => language.m_code).ToArray<string>(); }
+
+	private int GetLanguageIndexByCode(SystemText systemText, string languageCode = null) {
+		// find the language index by code
+		if (languageCode == null)
+			return -1;
+		return Array.IndexOf(GetLanguageCodes(systemText), languageCode);
+	}
 
 	// Generates a screenplay style script for recording dialog
 	public void GenerateScript( SystemText systemText )
-	{		
+	{
+		if ( m_exportLanguages != null && m_exportLanguages.Length > 0)	{
+			foreach(string languageCode in m_exportLanguages) {
+				// if the lang code is not a valid one, do nothing
+				if (!GetLanguageCodes(systemText).Contains(languageCode)) {
+					Debug.LogWarning($"Language index not found for code {languageCode}. Mind the code is case sensitive.");
+					continue;
+				}
+				// else generate a script with the selected language
+				GenerateScriptForLanguage(systemText, languageCode);
+			}
+		} 
+		else 
+		{
+			// if no language specified, use the predefined one (generate only one file)
+			GenerateScriptForLanguage(systemText, systemText.GetLanguages()[0].m_code);
+		}
+	}
+
+	private void GenerateScriptForLanguage( SystemText systemText, string languageCode = null )
+	{
+		// A lang code MUST be always specified or no script will be generated.
+		if (languageCode == null) {
+			Debug.LogWarning("Script generation invoked without language code. Exiting.");
+			return;
+		}
+		
+		int languageIndex = GetLanguageIndexByCode(systemText, languageCode);
+		if ( languageIndex < 0) {
+			Debug.LogWarning($"Language index not found for code {languageCode}. Exiting.");
+			return;
+		}
+
 		m_component = systemText;
 
 		string lastFile = null;
@@ -578,12 +703,24 @@ public class SystemTextEditor : Editor
 				builder.AppendFormat(SCRIPT_DIALOG_CHARACTER, data.m_character);
 				lastCharacter = data.m_character;
 			}
-			builder.AppendFormat(SCRIPT_DIALOG_LINE, data.m_character, data.m_id.ToString(), data.m_string);
+
+			if (languageIndex > 0) 
+			{
+				// index is greater than zero so we want one of the translations
+				// TODO: check if the index is never out of bound
+				builder.AppendFormat(SCRIPT_DIALOG_LINE, data.m_character, data.m_id.ToString(), data.m_translations[languageIndex-1]); // can be an empty string
+			}
+			else 
+			{
+				// index is 0 so we refer to the primary language
+				builder.AppendFormat(SCRIPT_DIALOG_LINE, data.m_character, data.m_id.ToString(), data.m_string);
+			}
+			
 		}
 		builder.Append(SCRIPT_DIALOG_FILE_END);
 
 
-		string scriptPath = EditorUtility.SaveFilePanel("Save Script File", "", "Script.html","html");
+		string scriptPath = EditorUtility.SaveFilePanel("Save Script File", "", $"Script-{languageCode}.html","html");
 		if ( string.IsNullOrEmpty(scriptPath) == false )
 		{
 			File.WriteAllText(scriptPath, builder.ToString());
@@ -803,8 +940,8 @@ public class SystemTextEditor : Editor
 		File.WriteAllText("RhubarbInput.txt", data.m_string);
 
 		System.Diagnostics.Process rhubarbProcess = new System.Diagnostics.Process();
-		rhubarbProcess.StartInfo.FileName = @"Assets\PowerQuest\Scripts\PowerQuest\Editor\RunRhubarb.bat";
-		rhubarbProcess.StartInfo.Arguments = @"Assets\Audio\Resources\" + fullFileName + ".wav"+" "+systemText.GetLipsyncExtendedMouthShapes();
+		rhubarbProcess.StartInfo.FileName = @Path.Combine("Assets", "PowerQuest", "Scripts", "PowerQuest", "Editor", "RunRhubarb.bat");
+		rhubarbProcess.StartInfo.Arguments = @Path.Combine("Assets", "Audio", "Resources" + fullFileName + ".wav"+" "+systemText.GetLipsyncExtendedMouthShapes());
 		rhubarbProcess.StartInfo.WindowStyle = System.Diagnostics.ProcessWindowStyle.Minimized;
 		rhubarbProcess.Start();
 		return rhubarbProcess;

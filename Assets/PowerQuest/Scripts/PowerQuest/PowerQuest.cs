@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 using System.Collections;
 using System.Collections.Generic;
@@ -40,9 +40,12 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	#region Variables: Inspector
 
 	[Header("Settings")]
+
 	[Tooltip("Defaults for settings that can be changed in game")]
 	[SerializeField] QuestSettings m_settings = new QuestSettings();
+
 	[Header("Project Setup")]
+
 	[Tooltip("The default vertical resolution of the game. How many pixels high the camera view will be.")]
 	[SerializeField] float m_verticalResolution = 180;
 	[Tooltip("Whether camera and other things snap to pixel. For pixel art games")]
@@ -56,14 +59,20 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	[Tooltip("Whether display requires a click to advance, or dismisses after dialog's spoken/after time")]
 	[SerializeField] bool m_displayTextAutoAdvance = false;
 	[Tooltip("When clicking to skip text, ignore clicks until text has been shown for this time")]
-	[SerializeField] float m_textNoSkipTime = 0.25f;
+	[SerializeField] float m_textNoSkipTime = 0.25f;	
+	[Tooltip("Whether charaters stop walking automatically when they start talking")]
+	[SerializeField] bool m_stopWalkingToTalk = true;
+
 	[Header("What editor actions are available")]
+
 	[SerializeField] bool m_enableUse = true;
 	[SerializeField] bool m_enableLook = true;
 	[SerializeField] bool m_enableInventory = true;
 	[Tooltip("Whether clicking inventory results in 'Selecting' it Broken Sword style, or 'Using' it Lucasarts style, or specified in GlobalScript's OnMouseClick")]
-	[SerializeField] eInventoryClickStyle m_inventoryClickStyle = eInventoryClickStyle.OnMouseClick;	
+	[SerializeField] eInventoryClickStyle m_inventoryClickStyle = eInventoryClickStyle.OnMouseClick;		
+
 	[Header("Other Defaults")]
+
 	[Tooltip("Increase when the data you're saving changes")]
 	[SerializeField] int m_saveVersion = 0;
 	[Tooltip("Increase when you can no longer save games of a specific version. After launch you should avoid increasing this if possible or player's save files get invalidated!")]
@@ -75,18 +84,22 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	[SerializeField] QuestText m_dialogTextPrefab = null;
 	[Tooltip("Global offset of dialog text (above character sprite)")]
 	[SerializeField] Vector2 m_dialogTextOffset = Vector2.zero;
+
 	[Header("Spawnables")]
+
 	[SerializeField] List<GameObject> m_spawnablePrefabs = new List<GameObject>();
+
 	[Header("Text Sprite setup")]
+
 	public Material m_textSpriteMaterial = null;
 	[ReorderableArrayAttribute]
 	public QuestText.TextSpriteData[] m_textSprites = null;
 
 	[Header("Other systems to create")]
 	[SerializeField] List<Component> m_systems = null;
+		
+	[Header("Prefab Lists (read only, enable debug inspector to edit)")]
 
-	
-	[Header("Prefab Lists (read only)")]
 	[SerializeField, ReadOnly] List<RoomComponent> m_roomPrefabs = new List<RoomComponent>();
 	[SerializeField, ReadOnly] List<CharacterComponent> m_characterPrefabs = new List<CharacterComponent>();
 	[SerializeField, ReadOnly] List<GuiComponent> m_guiPrefabs = new List<GuiComponent>();
@@ -96,6 +109,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	[SerializeField, ReadOnly] List<AnimationClip> m_inventoryAnimations = new List<AnimationClip>();
 
 	[Header("Pre-loaded Shaders")]
+
 	#pragma warning disable 414
 	[SerializeField] Shader[] m_preloadedShaders = null;
 	#pragma warning restore 414
@@ -185,8 +199,8 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	List<Coroutine> m_currentSequences = new List<Coroutine>(); // List of current sequence coroutines. Used for canceling sequences
 	List<Coroutine> m_backgroundSequences = new List<Coroutine>(); // ListOf current cancelable coroutines
 	// Cached current interaction/verb for rolling back, incase edited before first (cancelable) WalkTo
-	IQuestClickable m_currentInteractionClickable = null;
-	eQuestVerb m_currentInteractionVerb = eQuestVerb.None;
+	List<IQuestClickable>m_currentInteractionClickables = new List<IQuestClickable>();
+	List<eQuestVerb> m_currentInteractionVerbs = new List<eQuestVerb>();
 
 
 	// Hot-loading stuff
@@ -558,8 +572,8 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 
 		if ( clickHandled == false && verb == eQuestVerb.Walk )
 		{
-			
-			OnInteraction(null,verb);			
+			// Cancel any current interaction.
+			OnInteraction(null,eQuestVerb.Walk);
 
 			// Handle walk to clicked
 			{
@@ -577,10 +591,9 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 
 			if ( clickHandled == false )
 			{
-				// Walk to the current mouse position				
-				CancelCurrentInteraction();
+				// Walk to the current mouse position	
 				m_player.WalkToBG(mousePosition);
-				if ( mousePosition == m_mousePos ) // don't "hold down walk" if passed in position isn't just he mouse pos (otherwise it'll be overridden next update).
+				if ( mousePosition == m_mousePos ) // don't "hold down walk" if passed in position isn't just the mouse pos (otherwise it'll be overridden next update).
 					m_walkClickDown = true; 
 				clickHandled = true;
 				interactionFound = true;
@@ -677,9 +690,17 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 				m_lastClickable = clickable;
 				OnInteraction(m_lastClickable,verb);
 				if ( verb == eQuestVerb.Inventory && m_player.HasActiveInventory )
+				{
+					// clicked one inventory item on another
 					clickHandled = StartScriptInteraction( m_lastClickable.GetScriptable(), PowerQuest.SCRIPT_FUNCTION_USEINV_INVENTORY, new object[] {clickable as IInventory, m_player.ActiveInventory}, true );
+					// If click wasn't handled, try swapping the items
+					if ( clickHandled == false )
+						clickHandled = StartScriptInteraction( m_player.ActiveInventory as IQuestScriptable, PowerQuest.SCRIPT_FUNCTION_USEINV_INVENTORY, new object[] {m_player.ActiveInventory, clickable as IInventory}, true );					
+				}
 				else 
+				{
 					clickHandled = StartScriptInteraction( m_lastClickable.GetScriptable(), (verb != eQuestVerb.Look ? SCRIPT_FUNCTION_INTERACT_INVENTORY : SCRIPT_FUNCTION_LOOKAT_INVENTORY), new object[] {clickable as IInventory}, true );
+				}
 				if ( clickHandled )
 				{
 					m_queuedScriptInteractions.Add(m_currentSequence);
@@ -703,16 +724,25 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 				object[] parameters = null;
 				if ( verb == eQuestVerb.Inventory && m_player.HasActiveInventory )
 				{
-					methodName = "UnhandledUseInv";
-					parameters = new object[]{ clickable, m_player.ActiveInventory };
+					if ( clickable.ClickableType == eQuestClickableType.Inventory ) // use items on eachother
+					{
+						methodName = "UnhandledUseInvInv";
+						parameters = new object[]{ clickable, m_player.ActiveInventory };							
+					}
+					else  // use items on other things
+					{
+						methodName = "UnhandledUseInv";
+						parameters = new object[]{ clickable, m_player.ActiveInventory };
+					}
 				}
-				else 
+				else // other clicks on things
 				{
 					methodName = verb != eQuestVerb.Look ? "UnhandledInteract" : "UnhandledLookAt";
 					parameters = new object[]{ clickable };
 				}
 
-				clickHandled = StartScriptInteraction( this, methodName, parameters, true );
+				if ( clickHandled == false )
+					clickHandled = StartScriptInteraction( this, methodName, parameters, true );
 
 				if ( clickHandled )
 				{
@@ -731,37 +761,37 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	//
 	public Coroutine HandleInteract( IHotspot target )
 	{			
-		OnInteraction(target.IClickable, eQuestVerb.Use);
+		OnHandleInteraction(target.IClickable, eQuestVerb.Use);
 		return StartScriptInteractionCoroutine( target.IClickable.GetScript(), SCRIPT_FUNCTION_INTERACT_HOTSPOT + target.ScriptName, new object[] {target}, true );
 	}
 	public Coroutine HandleLookAt( IHotspot target )
 	{
-		OnInteraction(target.IClickable, eQuestVerb.Look);
+		OnHandleInteraction(target.IClickable, eQuestVerb.Look);
 		return StartScriptInteractionCoroutine( target.IClickable.GetScript(), SCRIPT_FUNCTION_LOOKAT_HOTSPOT + target.ScriptName, new object[] {target}, true );		
 	}
 	public Coroutine HandleInventory( IHotspot target, IInventory item )
 	{
-		OnInteraction(target.IClickable, eQuestVerb.Inventory);
+		OnHandleInteraction(target.IClickable, eQuestVerb.Inventory);
 		return StartScriptInteractionCoroutine( target.IClickable.GetScript(), PowerQuest.SCRIPT_FUNCTION_USEINV_HOTSPOT + target.ScriptName, new object[] {target, item}, true );
 	}
 	public Coroutine HandleInteract( IProp target )
 	{
-		OnInteraction(target.IClickable, eQuestVerb.Use);
+		OnHandleInteraction(target.IClickable, eQuestVerb.Use);
 		return StartScriptInteractionCoroutine( target.IClickable.GetScript(), SCRIPT_FUNCTION_INTERACT_PROP + target.ScriptName, new object[] {target}, true );
 	}
 	public Coroutine HandleLookAt( IProp target )
 	{
-		OnInteraction(target.IClickable, eQuestVerb.Look);
+		OnHandleInteraction(target.IClickable, eQuestVerb.Look);
 		return StartScriptInteractionCoroutine( target.IClickable.GetScript(), SCRIPT_FUNCTION_LOOKAT_PROP + target.ScriptName, new object[] {target}, true );
 	}
 	public Coroutine HandleInventory( IProp target, IInventory item )	
 	{
-		OnInteraction(target.IClickable, eQuestVerb.Inventory);
+		OnHandleInteraction(target.IClickable, eQuestVerb.Inventory);
 		return StartScriptInteractionCoroutine( target.IClickable.GetScript(), PowerQuest.SCRIPT_FUNCTION_USEINV_PROP + target.ScriptName, new object[] {target, item}, true );	
 	}
 	public Coroutine HandleInteract( ICharacter target )	
 	{ 
-		OnInteraction(target.IClickable, eQuestVerb.Use);
+		OnHandleInteraction(target.IClickable, eQuestVerb.Use);
 		// first try in room script, then fall back to character script
 		Coroutine result = StartScriptInteractionCoroutine( m_currentRoom.GetScriptable().GetScript(), PowerQuest. SCRIPT_FUNCTION_INTERACT_CHARACTER+target.ScriptName, new object[] {target}, true ); 
 		if ( result != null )
@@ -770,7 +800,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	}
 	public Coroutine HandleLookAt( ICharacter target )	
 	{ 
-		OnInteraction(target.IClickable, eQuestVerb.Look);
+		OnHandleInteraction(target.IClickable, eQuestVerb.Look);
 		// first try in room script, then fall back to character script
 		Coroutine result = StartScriptInteractionCoroutine( m_currentRoom.GetScriptable().GetScript(), PowerQuest. SCRIPT_FUNCTION_LOOKAT_CHARACTER+target.ScriptName, new object[] {target}, true ); 
 		if ( result != null )
@@ -779,7 +809,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	}
 	public Coroutine HandleInventory( ICharacter target, IInventory item ) 
 	{ 
-		OnInteraction(target.IClickable, eQuestVerb.Inventory);
+		OnHandleInteraction(target.IClickable, eQuestVerb.Inventory);
 		// first try in room script, then fall back to character script
 		Coroutine result = StartScriptInteractionCoroutine( m_currentRoom.GetScriptable().GetScript(), PowerQuest. SCRIPT_FUNCTION_USEINV_CHARACTER+target.ScriptName, new object[] {target,item}, true ); 
 		if ( result != null )
@@ -793,8 +823,14 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	//
 	// Misc utilities
 	//
+	
+	/// Get whether canceling the current sequence is enabled
+	public bool GetCanCancel()
+	{
+		return m_sequenceIsCancelable;
+	}
 
-	// Enables canceling in the current sequence
+	/// Enables canceling in the current sequence. This would potentially cause lots of issues with half-run functions, so not recommended.
 	public void EnableCancel() 
 	{
 		if ( m_sequenceIsCancelable == false && m_allowEnableCancel )
@@ -807,7 +843,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 		}
 	}
 
-	// Disables canceling during the current sequence
+	/// Disables canceling during the current sequence
 	public void DisableCancel() 
 	{ 
 		if ( m_sequenceIsCancelable && m_backgroundSequence != null )
@@ -831,9 +867,11 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 		if ( m_sequenceIsCancelable && m_backgroundSequence != null )
 		{
 			// Rollback sequence "used" and "Clicked" and "Occurrances"
-			if ( m_currentInteractionClickable != null )
-				m_currentInteractionClickable.OnCancelInteraction(m_currentInteractionVerb);
-			m_currentInteractionClickable = null;
+			for ( int i = 0; i < m_currentInteractionClickables.Count; ++i)
+				m_currentInteractionClickables[i]?.OnCancelInteraction(m_currentInteractionVerbs[i]);
+			m_currentInteractionVerbs.Clear();
+			m_currentInteractionClickables.Clear();
+			
 			SV.m_currentInteractionOccurrances.ForEach(occurance=>SV.m_occurances.Remove(occurance));
 			SV.m_currentInteractionOccurrances.Clear();	
 
@@ -858,7 +896,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	// Returns true the first time something occurrs, increments each time
 	public bool FirstOccurance(string uniqueString)
 	{
-		if ( m_sequenceIsCancelable )
+		if ( m_allowEnableCancel )
 			SV.m_currentInteractionOccurrances.Add(uniqueString);
 		return SV.m_occurances.Add(uniqueString) <= 1;
 	}
@@ -871,7 +909,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	// Returns number of times something has occurred, and incrementing the number
 	public int Occurrance(string thing)
 	{
-		if ( m_sequenceIsCancelable )
+		if ( m_allowEnableCancel )
 			SV.m_currentInteractionOccurrances.Add(thing);
 		return SV.m_occurances.Add(thing) - 1;
 	}
@@ -1062,6 +1100,8 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	//  Used by characters to check if should set autoavance flag on dialog
 	public bool GetShouldSayTextAutoAdvance() { return m_sayTextAutoAdvance; }
 
+	public bool GetStopWalkingToTalk() { return m_stopWalkingToTalk; }
+
 	// Wait for current dialog 
 	public Coroutine WaitForDialog(float time, AudioHandle audioSource, bool autoAdvance, bool skippable)	{	return StartCoroutine(CoroutineWaitForDialog(time, skippable, autoAdvance, audioSource)); }
 
@@ -1107,7 +1147,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 		return m_cutscene;
 	}
 
-	public bool GetSkipCutscene() 
+	public bool GetSkippingCutscene() 
 	{
 		return m_skipCutscene;
 	}
@@ -1116,9 +1156,9 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	public QuestCursor GetCursor() { return m_cursor; }
 
 
-	public Pathfinder Pathfinder { get{ return m_currentRoom.GetInstance().GetPathfinder(); } }
+	public Pathfinder Pathfinder { get{ return m_currentRoom != null ? m_currentRoom.GetInstance().GetPathfinder() : null; } }
 
-
+	public List<Character> GetCharacters() { return m_characters; }
 	public Character GetCharacter(int id) 
 	{ 
 		List<Character> list = m_characters;
@@ -1168,6 +1208,12 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	// Start the transition to a new room
 	public void StartRoomTransition( Room room, bool force = false )
 	{		
+		if ( m_levelLoadedCalled == false )
+		{
+			Debug.LogError("Attempted to change rooms while already changing rooms!");
+			return;
+		}
+
 		if ( m_initialised == false ) // HACK-Because room changes can happen when setting up characters initially, and we don't wanna change scene for these
 			return;
 
@@ -1250,7 +1296,25 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	public bool OnInventoryClick(string item, PointerEventData.InputButton button)
 	{		
 		if ( m_inventoryClickStyle == eInventoryClickStyle.OnMouseClick )
+		{
+			if ( Paused )
+			{
+				// Do some special handling to check for process click
+				System.Reflection.MethodInfo method = null;
+				if ( m_globalScript != null )
+				{
+					method = m_globalScript.GetType().GetMethod( "OnMouseClick", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance );
+					if ( method != null ) 
+						method.Invoke(m_globalScript,new object[]{ button == PointerEventData.InputButton.Left,  button == PointerEventData.InputButton.Right });
+
+					// If any script interactions were queued, return 'true' to unpause the inventory
+					if ( m_queuedScriptInteractions.Count > 0 )
+						return true;
+				}
+				
+			}
 			return false;
+		}
 
 		bool clickHandled = false;
 		bool shouldUnpause = false;
@@ -1359,6 +1423,8 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 		return shouldUnpause;
 	}
 
+	// Returns true if game is in process of being restored from a save file
+	public bool GetRestoringGame() { return m_restoring; }
 
 	//
 	// Misc utilities
@@ -1394,6 +1460,15 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 		m_queuedScriptInteractions.Add(result);
 		return result;
 	}*/
+	
+	/// Queues a coroutine to start on the next Blocking Update
+	public Coroutine QueueCoroutine( IEnumerator routine )
+	{
+		Coroutine result = StartQuestCoroutine(routine);
+		// This will cause it to block main loop once reached. NB: not sure if this should only happen if "m_sequenceIsCancelable" is false...?
+		m_queuedScriptInteractions.Add(result);
+		return result;
+	}
 
 	#endregion
 	#region Functions: Public Editor
@@ -1425,7 +1500,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	public QuestCameraComponent GetCameraPrefab() { return m_cameraPrefab; }
 	public QuestText GetDialogTextPrefabEditor() { return m_dialogTextPrefab; }
 	public List<AnimationClip> GetInventoryAnimations() { return m_inventoryAnimations; }
-	public AnimationClip GetInventoryAnimation(string animName) { return m_inventoryAnimations.Find(item=>string.Equals(item.name, animName, System.StringComparison.OrdinalIgnoreCase));  }
+	public AnimationClip GetInventoryAnimation(string animName) { return m_inventoryAnimations.Find(item=> item == null ? false : string.Equals(item.name, animName, System.StringComparison.OrdinalIgnoreCase));  }
 	public List<IQuestScriptable> GetAllScriptables()
 	{
 		List<IQuestScriptable> scriptables = new List<IQuestScriptable>();
@@ -1499,7 +1574,8 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 		if  ( hasfocus )
 		{
 			UnityEngine.Cursor.visible = false;
-			UnityEngine.Cursor.lockState = CursorLockMode.Confined;
+			if ( Application.isEditor == false )
+				UnityEngine.Cursor.lockState = CursorLockMode.Confined;
 		}
 		else 
 		{
@@ -1524,6 +1600,15 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 			LAYER_UI = LayerMask.NameToLayer("UI");
 
 		//
+		// Ensure there's no null quest objects lingering in lists. This may be due to unity doing wierd things with the list, or them being deleted incorrectly. 
+		//
+		m_characterPrefabs.RemoveAll(item=>item==null);
+		m_roomPrefabs.RemoveAll(item=>item==null);
+		m_dialogTreePrefabs.RemoveAll(item=>item==null);
+		m_guiPrefabs.RemoveAll(item=>item==null);
+		m_inventoryPrefabs.RemoveAll(item=>item==null);
+
+		//
 		// Instantiate other systems (audio, time, etc)
 		//
 		foreach( Component obj in m_systems )
@@ -1532,6 +1617,11 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 			trans.name = obj.name;
 			trans.parent = transform;
 		}
+
+		// Set language
+		if ( string.IsNullOrEmpty(Settings.Language) == false )
+			Settings.Language = Settings.Language;
+
 
 
 		//
@@ -1682,7 +1772,6 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 			m_menuManager.Update();
 			return;
 		}
-
 
 		// Call partial update fucntion for extentions 
 		ExtentionUpdate();
@@ -1872,9 +1961,9 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 			Restart();
 		}
 
-	    if ( Debug.isDebugBuild && Input.GetKey(KeyCode.BackQuote) )
+		if ( Debug.isDebugBuild && Input.GetKey(KeyCode.BackQuote) )
 		{
-	        // debug cheat keys
+			// debug cheat keys
 			if ( Input.GetKeyDown(KeyCode.F10) && GetBlocked() == false  )
 			{
 				// Print slot info
@@ -2055,7 +2144,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 			m_currentSequence = m_backgroundSequence;
 			m_backgroundSequence = null;
 		}
-		m_sequenceIsCancelable = false; 		
+		m_sequenceIsCancelable = false; 	
 	}
 
 	public void OnSay()
@@ -2173,17 +2262,49 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	// Used by clickables to check if usecount should show as incremented yet (makes more sense for it to be 0 until interaction is finished)
 	public bool GetInteractionInProgress( IQuestClickable clickable, eQuestVerb verb )
 	{
-		return clickable != null && clickable == m_currentInteractionClickable && verb == m_currentInteractionVerb;
+		if ( clickable == null )
+			return false;
+		// note: it's a list to cope with interactions that call 'HandleInteract()'
+		for ( int i = 0; i < m_currentInteractionClickables.Count; ++i ) 
+		{
+			if ( m_currentInteractionClickables[i] == clickable && m_currentInteractionVerbs[i] == verb )
+				return true;
+		}
+		return false;
 	}
 
 	// Called when player interaction starts (ie: player clicked something)
 	void OnInteraction( IQuestClickable clickable, eQuestVerb verb )
 	{
-		// Set current interaction data so can be rolled back if player cancels
-		m_currentInteractionClickable = clickable;
-		m_currentInteractionVerb = verb;
+		// Cancel the current interaction before starting new one
+		CancelCurrentInteraction();
+
+		// Clear the list of things the current interaction has changed
 		SV.m_currentInteractionOccurrances.Clear();
-		clickable?.OnInteraction(verb);
+		m_currentInteractionClickables.Clear();
+		m_currentInteractionVerbs.Clear();
+
+		if ( clickable != null )
+		{
+
+			// Add this clickable & verb so we can roll back 'use count' later
+			m_currentInteractionClickables.Add(clickable);
+			m_currentInteractionVerbs.Add(verb);	
+		
+			// call 'clickable.OnInteraction' which increments the usecount
+			clickable.OnInteraction(verb);
+		}
+	}
+
+	// Called when HandleInteract/HandleLookAt is called (simulating player clicking something from another script)
+	void OnHandleInteraction( IQuestClickable clickable, eQuestVerb verb )
+	{
+		// When HandleInteract is used, we want to increment use count for what it was done, without 'cancelling' the interaction that called HandleInteract
+		m_currentInteractionClickables.Add(clickable);
+		m_currentInteractionVerbs.Add(verb);
+
+		// call 'clickable.OnInteraction' which increments the usecount
+		clickable.OnInteraction(verb);
 	}
 
 	// Starts a MAIN script interaction, setting it to be the "current sequence" if there was a script to start, and enabling canceling if started with a walk
@@ -2205,9 +2326,6 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 			result = StartScriptInteractionCoroutine(scriptClass, methodName, parameters, stopPlayerMoving, cancelCurrentInteraction);
 			if ( result != null && result != m_consumedInteraction)
 			{
-				//if ( regionHack ) // entering/exiting regions need to be able to cancel 
-				//	CancelCurrentInteraction();
-
 				if ( m_currentSequence == null )
 				{					
 					// no sequence running, so set this as the current one
@@ -2246,14 +2364,16 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 			if ( method != null )
 			{	
 				if ( stopPlayerMoving )
-					m_player.StopWalking();
-					
+					m_player.StopWalking();	
+
 				// Start sequence				
 				IEnumerator currentSequenceEnumerator = method.Invoke(scriptClass,parameters) as IEnumerator;					
 				if ( currentSequenceEnumerator != null )
 				{	
+					// Cache some things to see if anything changed when invoked (to see if we should fallback to unhandled)
 					bool wasTransitioning = m_transitioning;
 					DialogTree prevDialog = m_currentDialog;
+
 					if ( cancelCurrentInteraction && m_sequenceIsCancelable )
 					{
 						// OnEnterRegion and OnUpdateBlocking need this Hacky cancelable stuff to prevent their own functions from being added to the m_backgroundSequences and then cancelled
@@ -2263,11 +2383,11 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 					}
 					else 
 					{
-						result = StartCoroutine(currentSequenceEnumerator);		
+						result = StartCoroutine(currentSequenceEnumerator);
 					}		
 					
 					// If the enumerator.Current is the yield break one, return false so we don't have to wait an extra frame
-					if ( currentSequenceEnumerator.Current == EMPTY_YIELD_INSTRUCTION)
+					if ( currentSequenceEnumerator.Current == EMPTY_YIELD_INSTRUCTION || result == null)
 					{						
 						if ( m_transitioning && wasTransitioning == false || prevDialog != m_currentDialog )
 						{
@@ -2333,16 +2453,16 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 
 	static IEnumerator CoroutineEmpty()
 	{
-	    if ( PowerQuest.Get.GetSkipCutscene() )
-	        yield break;
-	    yield return null;
+		if ( PowerQuest.Get.GetSkippingCutscene() )
+			yield break;
+		yield return null;
 	}
 
 	static IEnumerator CoroutineWaitForTime(float time, bool skippable)
 	{		
-		bool first = true; // first frame the mouse will always be down, so don't skip until 2nd
-		while ( time > 0.0f
-			&& PowerQuest.Get.GetSkipCutscene() == false
+		bool first = true; // first frame the mouse will always be down, so don't skip until 2nd. When time starts as 0, we still want to pause for a single frame.
+		while ( (time > 0.0f || first)
+			&& PowerQuest.Get.GetSkippingCutscene() == false
 			&& ( skippable == false || PowerQuest.Get.HandleSkipDialogKeyPressed() == false || first ) )
 		{
 			first = false;
@@ -2363,7 +2483,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 
 	IEnumerator CoroutineDisplay(string text, int id = -1)
 	{
-		if ( GetSkipCutscene() )
+		if ( GetSkippingCutscene() )
 			yield break;
 		StartDisplay(text,id);
 		yield return WaitForDialog(PowerQuest.Get.GetTextDisplayTime(text), m_dialogAudioSource, m_displayTextAutoAdvance, true);	
@@ -2372,7 +2492,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 
 	IEnumerator CoroutineDisplayBG(string text, int id = -1)
 	{
-		if ( PowerQuest.Get.GetSkipCutscene() )
+		if ( PowerQuest.Get.GetSkippingCutscene() )
 			yield break;
 		StartDisplay(text,id);
 		yield return WaitForDialog(PowerQuest.Get.GetTextDisplayTime(text), m_dialogAudioSource, true, false);
@@ -2403,7 +2523,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 			result &= (time > 0.0f);
 
 		// Check if skipping cutscene
-		result &= PowerQuest.Get.GetSkipCutscene() == false;
+		result &= PowerQuest.Get.GetSkippingCutscene() == false;
 
 		// Check if skip dialog button is pressed
 		result &= ( skippable == false || PowerQuest.Get.HandleSkipDialogKeyPressed() == false || firstCall );
@@ -2529,7 +2649,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	{ 
 		bool first = true; // first frame the mouse will always be down, so don't skip until 2nd
 		while ( condition != null && condition() == false
-				&& PowerQuest.Get.GetSkipCutscene() == false
+				&& PowerQuest.Get.GetSkippingCutscene() == false
 				&& ( skippable == false || PowerQuest.Get.HandleSkipDialogKeyPressed() == false || first ) )
 		{
 		first = false;
@@ -2540,7 +2660,7 @@ public partial class PowerQuest : Singleton<PowerQuest>, ISerializationCallbackR
 	{ 
 		bool first = true; // first frame the mouse will always be down, so don't skip until 2nd
 		while ( condition != null && condition() == true 
-			&& PowerQuest.Get.GetSkipCutscene() == false
+			&& PowerQuest.Get.GetSkippingCutscene() == false
 			&& ( skippable == false || PowerQuest.Get.HandleSkipDialogKeyPressed() == false || first ) )
 		{
 			first = false;

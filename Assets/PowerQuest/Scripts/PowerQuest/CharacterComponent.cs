@@ -1,8 +1,9 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using PowerTools;
 using System.Text.RegularExpressions;
+using static PowerTools.Quest.Character;
 
 namespace PowerTools.Quest
 {
@@ -73,9 +74,11 @@ public class CharacterComponent : MonoBehaviour
 	#endregion
 	#region Vars: Private
 
+	bool m_firstUpdate = true;
+
 	Vector2 m_targetPos = Vector2.zero;
 	Vector2 m_targetEndPos = Vector2.zero;
-	Character.eState m_state = Character.eState.None;
+	eState m_state = eState.None;
 
 	SpriteRenderer m_sprite = null;
 	PowerSprite m_powerSprite = null;
@@ -88,14 +91,15 @@ public class CharacterComponent : MonoBehaviour
 
 	eFace m_facing = eFace.Up;	// Used to check if facing has changed in an update facing call
 	string m_currAnimBaseName = null; // Used to change animation when face direction changes
-
-	bool m_pauseAnimAtEnd = false; // If true, animation (from PlayAnimation()) will pause on last frame and not return to Idle (Until StopAnimation is called). TODO: if useful, move to data so can be saved.
-
+	
 	int m_currLineId =-1;
 	float m_turnTimer = 0;
 
 	SpriteAnim m_mouth = null;
 	SpriteAnimNodes m_mouthNode = null;
+	
+	// Whether the solid obstacle has been added for this character yet
+	bool m_addedSolidObstacle = false;
 
 	// Experimental "Transition" code. Not really working for flipping and stuff
 	string m_transitionAnim = null;
@@ -103,17 +107,54 @@ public class CharacterComponent : MonoBehaviour
 	string m_transitioningFromAnim = null;
 	bool m_flippedLastUpdate = false; // unsure if this is used, look at cleaning up.
 	float m_animChangeTime = 0; // how long the current clip has been playing
-	float m_loopStartTime = -1; // whether a loop tag was hit, and at what time
-	float m_loopEndTime = -1; // whether a loop end tag was hit, and at what time	
+	//float m_loopStartTime = -1; // whether a loop tag was hit, and at what time
+	//float m_loopEndTime = -1;   // whether a loop end tag was hit, and at what time
+	
+	bool m_playWalkAnim = true; // Flag used for MoveTo, to move player without walk animation being played
+
+	// used for automatically setting hotspots
+	PolygonCollider2D m_autoHotspotCollider = null;
+	Sprite m_lastHotspotSprite = null;
+
+	bool m_walking = false;
+	bool m_talking = false;
+	bool m_animating = false;
+
+	public bool Walking => m_walking;
+	public bool Talking => m_talking;
+	public bool Animating => m_animating;
+
 
 	#endregion
 	#region Public access Functions
 
 	public Character GetData() { return m_data; }
-	public void SetData(Character data) { m_data = data; }
+	public void SetData(Character data) 
+	{ 
+		m_data = data; 
+
+		// Set the clickable collider to enable the correct collision after restoring
+		OnClickableColliderIdChanged();
+		if ( string.IsNullOrEmpty(m_data.Animation) == false )
+		{
+			// Hack for restoring existing 'loop time'. Need to cache it, and pretend it's not set, so the game doesn't try and 'transition' out of looping anim.
+			float loopStartTime = m_data.LoopStartTime;
+			float loopEndTime = m_data.LoopEndTime;
+			m_data.LoopStartTime = -1;
+			m_data.LoopEndTime = -1;		
+
+			PlayAnimation(m_data.Animation);
+
+			m_data.LoopStartTime = loopStartTime;
+			m_data.LoopEndTime = loopEndTime;
+
+			// m_spriteAnimator.NormalizedTime = m_data.AnimationTime; // moved this to first update
+			
+		}
+	}
 	public SpriteRenderer GetSprite() { return m_sprite; }
 	public SpriteAnim GetSpriteAnimator() { return m_spriteAnimator; }
-	public Character.eState GetState()	{ return m_state; }
+	public eState GetState()	{ return m_state; }
 
 	public List<AnimationClip> GetAnimations() { return m_animations; }
 
@@ -182,6 +223,8 @@ public class CharacterComponent : MonoBehaviour
 	// Turn on/off visibility depending on whether character should be visible
 	public void UpdateVisibility()
 	{
+		if ( m_data == null )
+			return;
 		bool shouldShow = m_data.Visible;
 		if ( GetSpriteAnimator() != null )
 			GetSpriteAnimator().enabled = shouldShow;
@@ -192,6 +235,103 @@ public class CharacterComponent : MonoBehaviour
 		});
 	}
 
+	public void UpdateEnabled()
+	{		
+		UpdateVisibility();
+		UpdateSolid();
+	}
+
+	// Called when enabled/disabled the charadter's solid obstacle for other characters to walk around
+	public void UpdateSolid()
+	{
+		if ( GetData() == null || PowerQuest.Get.Pathfinder == null )
+			return;
+
+		// Add obstacle to pathfinder if it wasn't already there
+		if ( m_addedSolidObstacle == false && GetData().Solid )
+		{
+			PowerQuest.Get.Pathfinder.AddObstacle(transform, CalcSolidPoly());
+			m_addedSolidObstacle = true;
+		}
+		else if ( m_addedSolidObstacle == true && GetData().Solid == false )
+		{
+			PowerQuest.Get.Pathfinder.RemoveObstacle(transform);
+			m_addedSolidObstacle = false;
+		}
+	}
+	
+	// Called when solid size has changed so obstacle can be removed/re-added with new dimentions
+	public void UpdateSolidSize()
+	{
+		if ( m_addedSolidObstacle && PowerQuest.Get.Pathfinder != null )
+		{
+			PowerQuest.Get.Pathfinder.RemoveObstacle(transform);			
+			m_addedSolidObstacle = false;
+		}
+		UpdateSolid();
+	}	
+
+	// Calculates and returns the polygon for the solid collider that other characters cant walk through. Public for editor
+	public Vector2[] CalcSolidPoly()
+	{
+		Vector2 halfSize = GetData().SolidSize * 0.5f;
+		Vector2[] poly = new Vector2[4]
+		{
+			new Vector2(-halfSize.x, -halfSize.y),
+			new Vector2(-halfSize.x, halfSize.y),
+			new Vector2(halfSize.x, halfSize.y),
+			new Vector2(halfSize.x, -halfSize.y),
+		};
+		return poly;
+	}
+	
+
+	public void UpdateUseSpriteAsHotspot()
+	{
+		if ( GetData() == null )
+			return;
+		bool useSprite = m_data.UseSpriteAsHotspot;
+		if ( useSprite )
+		{
+			if ( m_clickableColliders == null || m_clickableColliders.Length == 0 )
+			{
+				// Find and add collider to be fallback clickable collider
+				Collider2D collider = GetComponent<Collider2D>();
+				if ( collider != null )
+				{
+					m_clickableColliders = new Collider2D[] {collider};
+					m_data.ClickableColliderId = 0;
+				}
+			}
+
+			if ( m_autoHotspotCollider == null )
+			{
+				// Add automatic collider
+				m_autoHotspotCollider = gameObject.AddComponent<PolygonCollider2D>();
+				m_autoHotspotCollider.isTrigger = true;
+			}
+			m_autoHotspotCollider.enabled = true;
+			
+
+			// disable clickable colliders
+			for ( int i = 0; i < m_clickableColliders.Length; ++i )
+			{
+				if ( m_clickableColliders[i] != null )
+					m_clickableColliders[i].enabled = false;
+			}
+		}
+		else 
+		{
+			if ( m_autoHotspotCollider != null )
+				m_autoHotspotCollider.enabled = false;
+
+			// Return to default collider
+			if ( GetData().ClickableColliderId >= 0 )
+			{
+				OnClickableColliderIdChanged();
+			}
+		}
+	}
 
 	#endregion
 	#region Start/Awake Functions
@@ -215,38 +355,92 @@ public class CharacterComponent : MonoBehaviour
 
 	void Start()
 	{
-		// set visible to trigger update of renderes being visible first time it's shown
-		UpdateVisibility();
-
-		UpdateFacingVisuals(m_data.Facing);
-		if ( m_state == Character.eState.None )
-		{
-			SetState(Character.eState.Idle);
-		}
-
+		m_firstUpdate = true;
+		m_spriteAnimator.NormalizedTime = m_data.AnimationTime; // moved this to first update
 	}
 
-
+	void OnDestroy()
+	{
+		PowerQuest.Get?.Pathfinder?.RemoveObstacle(transform);
+	}
+	
 	#endregion
 	#region Update Functions
 	
+	void OnTransitionAnimComplete()
+	{
+		if ( string.IsNullOrEmpty(m_transitioningToAnim) )
+			return;
+
+		// Clears transtition data and starts the queued transition animation.
+		string queuedAnim = m_transitioningToAnim;
+
+		// Finished transition, so clear all transition variables
+		m_transitioningToAnim = null;
+		m_transitionAnim = null;
+		m_transitioningFromAnim = null;
+		m_data.LoopStartTime = -1;
+		m_data.LoopEndTime = -1;	
+
+		PlayAnimInternal(queuedAnim, true);
+	}
+	
+	// When something changes the animation state, 
+	void OnAnimStateChange()
+	{
+		if ( m_animating )
+		{
+			if ( m_state != eState.Animate )
+				SetState(eState.Animate);
+		}
+		else if ( m_walking )
+		{
+			if (m_state != eState.Walk )
+				SetState(eState.Walk);
+		}
+		else if ( m_talking )
+		{
+			if ( m_state != eState.Talk )
+				SetState(eState.Talk);
+		}
+		else 
+		{
+			if ( m_state != eState.Idle )
+				SetState(eState.Idle);
+		}
+	}
+
 	// Update is called once per frame
 	void Update() 
 	{	
+		if ( m_firstUpdate )
+		{
+			// set visible to trigger update of renderes being visible first time it's shown
+			UpdateVisibility();
+
+			UpdateFacingVisuals(m_data.Facing);
+			OnAnimStateChange();
+			UpdateSolid();
+			UpdateUseSpriteAsHotspot();
+			if ( m_animating )
+				m_spriteAnimator.NormalizedTime = m_data.AnimationTime;
+			
+				
+			m_firstUpdate = false;
+		}
 		m_animChangeTime += Time.deltaTime;
+
+		// Set animation time- so it can be saved
+		if ( m_spriteAnimator != null && Animating ) // NB: can't check m_spriteAnimator.IsPlaying()  because it'll keep increasing past end of anim when 'pauseAtEnd' is true, and that's how psa checks for "Playing"
+			m_data.AnimationTime = m_spriteAnimator.NormalizedTime;
+		else
+			m_data.AnimationTime = -1;
+
 		// Update transitional anims
 		if ( string.IsNullOrEmpty(m_transitioningToAnim) == false && m_spriteAnimator.Playing == false )
 		{
-			string queuedAnim = m_transitioningToAnim;
-
-			// Finished transition, so clear all transition variables
-			m_transitioningToAnim = null;
-			m_transitionAnim = null;
-			m_transitioningFromAnim = null;
-			m_loopStartTime = -1;
-			m_loopEndTime = -1;	
-
-			PlayAnimInternal(queuedAnim, true);
+			// Clears transtition data and starts the queued transition animation.
+			OnTransitionAnimComplete();
 		}
 
 		// Update turn anims
@@ -257,14 +451,41 @@ public class CharacterComponent : MonoBehaviour
 			PlayAnimInternal(queuedAnim, true);
 		}
 
+		// Update character always turning to face a character
+		m_data.UpdateFacingCharacter();
 
 		// Update turn to face
 		UpdateTurnToFace();
 
+		if ( m_animating )
+		{
+			// If animation has finished, return to idle. 
+			if ( m_spriteAnimator.Playing == false && m_data.PauseAnimAtEnd == false )
+			{
+				m_data.StopAnimation();
+				/* calling m_data.StopAnimation() does these anyway
+				m_animating = false; 
+				OnAnimStateChange();				
+				*/
+			}
+			else if ( PowerQuest.Get.GetSkippingCutscene() && m_spriteAnimator.GetCurrentAnimation().isLooping == false ) 
+			{
+				m_data.StopAnimation(); // When a cutscene's skipped, assume that any non-looping animation should be ended.				
+				/* calling m_data.StopAnimation() does these anyway
+				m_animating = false; 
+				OnAnimStateChange();				
+				*/
+			}
+		}
+		
+		// Update any walking
+		UpdateWalking();
+		UpdateAnimating();
+
 		// update state switch
 		switch (m_state) 
 		{
-			case Character.eState.Idle:
+			case eState.Idle:
 			{
 				// Play idle animation after delay (for returning from a played animation where we don't want to flicker to an old idle animation)
 				if ( m_playIdleDelayFrames > 0 )
@@ -272,106 +493,20 @@ public class CharacterComponent : MonoBehaviour
 					m_playIdleDelayFrames--;
 					if ( m_playIdleDelayFrames <= 0 )
 					{
-						// Play idle anim
-						PlayAnimInternal(m_data.AnimIdle);						
+						// Play idle anim						
+						PlayAnimInternal(m_data.AnimIdle);				
 					}						
 				}
 			} break;
 
-			case Character.eState.Walk:
+			case eState.Walk:
 			{
-
-				Vector2 position = m_data.GetPosition();
-
-				bool reachedTarget = false;
-
-				if ( m_turningToWalk )
-				{
-					if ( m_data.GetFaceDirection() == m_data.GetTargetFaceDirection() )// || (m_playingTurningAnim && m_spriteAnimator.Playing == false) )
-					{
-						// Finished turning, change to walk anim
-						m_turningToWalk = false;
-						//m_playingTurningAnim = false;
-						PlayAnimInternal(m_data.AnimWalk,false);
-					}
-					else 
-					{ 
-						// Still turning, don't start walking
-						break;
-					} 
-				}
-
-				float remainingDeltaTime = Time.deltaTime;
-				while ( reachedTarget == false && remainingDeltaTime > 0 )
-				{			
-					// Update path
-					if ( m_path != null && m_pathPointNext > -1)
-					{						
-						m_targetPos = m_path[m_pathPointNext];
-					}
-
-					Vector2 direction = m_targetPos - position;
-					float dist = Utils.NormalizeMag(ref direction);
-					Vector2 finalWalkSpeed = new Vector2( (m_walkSpeedOverride.x != -1 ? m_walkSpeedOverride.x :  m_data.WalkSpeed.x), (m_walkSpeedOverride.y != -1 ? m_walkSpeedOverride.y :  m_data.WalkSpeed.y) );
-					float speed =  (Mathf.Abs(direction.x) * finalWalkSpeed.x) + (Mathf.Abs(direction.y) * finalWalkSpeed.y);
-					if ( m_data.AdjustSpeedWithScaling )
-						speed *= transform.localScale.y; // scale by speed. In future this would be an option
-					if ( dist == 0 )
-					{
-						reachedTarget = true;
-						break;
-					}
-					
-					m_data.FaceDirection( direction, true );
-
-					if ( dist < speed * remainingDeltaTime )
-					{
-						// going to get there this frame
-						remainingDeltaTime -= dist/speed;
-						position = m_targetPos;
-
-						if ( m_path != null && m_pathPointNext > 0 )
-						{
-							// Reached pathfinding point, so go to next pathfinding point
-							m_pathPointNext++;
-							reachedTarget = m_pathPointNext >= m_path.Length;
-						}
-						else 
-						{
-							reachedTarget = true;
-						}
-					}
-					else
-					{
-						position += direction * speed * remainingDeltaTime;
-						remainingDeltaTime -= Time.deltaTime;
-					}
-				}
-
-				if ( reachedTarget )
-				{
-					m_path = null;
-					m_pathPointNext = -1;
-					SetState(Character.eState.Idle);
-					
-					if ( m_data.GetFaceAfterWalk() != eFace.None ) 
-						m_data.FaceBG(m_data.GetFaceAfterWalk());
-				}
-
-				// Finally, set the position! yaay!
-				m_data.SetPosition(position);
-
 			} break;
-			case Character.eState.Animate:
+			case eState.Animate:
 			{
-				// If animation has finished, return to idle. 
-				if ( m_spriteAnimator.Playing == false && m_pauseAnimAtEnd == false )
-					SetState(Character.eState.Idle);
-				else if ( PowerQuest.Get.GetSkipCutscene() && m_spriteAnimator.GetCurrentAnimation().isLooping == false ) 
-					m_data.StopAnimation(); // When a cutscene's skipped, assume that any non-looping animation should be ended.
 			} break;
 			
-			case Character.eState.Talk:
+			case eState.Talk:
 			{	
 			} break;
 			default: break;
@@ -381,11 +516,158 @@ public class CharacterComponent : MonoBehaviour
 			UpdateLipSync();
 
 		// Update sorting order
-		SpriteRenderer sprite = GetComponentInChildren<SpriteRenderer>(false);
-		if ( sprite != null )
+		if ( m_sprite != null )
+			m_sprite.sortingOrder = -Mathf.RoundToInt((m_data.GetPosition().y + m_data.Baseline)*10.0f);
+
+		if ( m_data.UseSpriteAsHotspot && PowerQuest.Get.GetBlocked() == false && m_data.Clickable && m_lastHotspotSprite != m_sprite.sprite && m_autoHotspotCollider != null && m_sprite != null )
 		{
-			sprite.sortingOrder = -Mathf.RoundToInt((m_data.GetPosition().y + m_data.Baseline)*10.0f);
+			Sprite sprite = m_sprite.sprite;
+
+			m_autoHotspotCollider.pathCount = sprite.GetPhysicsShapeCount();
+		
+			List<Vector2> path = new List<Vector2>();		
+			for (int i = 0; i < m_autoHotspotCollider.pathCount; i++) 
+			{
+				
+				path.Clear();
+				sprite.GetPhysicsShape(i, path);
+				// Unity's polyes are awful inflated, so try shrinking them a bit. Hopefully this isn't too massively inefficient!! Also more applicable to pixel games
+				Vector2[] newPath = Pathfinder.InflatePoly(path.ToArray(),2);
+				m_autoHotspotCollider.SetPath(i, newPath);
+
+			}
+			if ( m_powerSprite != null )
+				m_autoHotspotCollider.offset = m_powerSprite.Offset;
+			
+			m_lastHotspotSprite = sprite;
 		}
+
+	}
+
+	void UpdateAnimating()
+	{
+		if ( Animating == false )
+			return;
+
+		// If animation has finished, return to idle. 
+		if ( m_spriteAnimator.Playing == false && m_data.PauseAnimAtEnd == false )
+		{
+			m_data.Animation = null; // NB: this calls back to CharacterComponent.StopAnimation();
+			m_animating = false;
+			//OnAnimStateChange();
+		}
+		else if ( PowerQuest.Get.GetSkippingCutscene() && m_spriteAnimator.GetCurrentAnimation().isLooping == false && m_data.PauseAnimAtEnd == false && m_data.LoopStartTime < 0 )
+		{
+			m_data.StopAnimation(); // When a cutscene's skipped, assume that any non-looping animation should be ended.
+		}
+	}
+
+
+
+	// Returns true if still walking
+	bool UpdateWalking()
+	{
+		if ( Walking == false )
+			return false;
+
+		Vector2 position = m_data.GetPosition();
+
+		bool reachedTarget = false;
+		
+		if ( m_turningToWalk )
+		{
+			if ( m_data.GetFaceDirection() == m_data.GetTargetFaceDirection() )// || (m_playingTurningAnim && m_spriteAnimator.Playing == false) )
+			{
+				// Finished turning, change to walk anim
+				m_turningToWalk = false;
+				//m_playingTurningAnim = false;
+				PlayAnimInternal(m_data.AnimWalk,false);
+			}
+			else 
+			{ 
+				// Still turning, don't start walking
+				return true;
+			} 
+		}
+
+		float remainingDeltaTime = Time.deltaTime;
+		while ( reachedTarget == false && remainingDeltaTime > 0 )
+		{			
+			// Update path
+			if ( m_path != null && m_pathPointNext > -1)
+			{						
+				m_targetPos = m_path[m_pathPointNext];
+			}
+			else if ( m_data.Waypoints.Count > 0 )
+			{
+				m_targetPos = m_data.Waypoints[0];
+			}
+
+			Vector2 direction = m_targetPos - position;
+			float dist = Utils.NormalizeMag(ref direction);
+			Vector2 finalWalkSpeed = new Vector2( (m_walkSpeedOverride.x != -1 ? m_walkSpeedOverride.x :  m_data.WalkSpeed.x), (m_walkSpeedOverride.y != -1 ? m_walkSpeedOverride.y :  m_data.WalkSpeed.y) );
+			float speed =  (Mathf.Abs(direction.x) * finalWalkSpeed.x) + (Mathf.Abs(direction.y) * finalWalkSpeed.y);
+			if ( m_data.AdjustSpeedWithScaling )
+				speed *= transform.localScale.y; // scale by speed. In future this would be an option
+			if ( dist == 0 )
+			{
+				Debug.Log("Walking- Dist == 0. Not sure if it ever gets here");
+				reachedTarget = true;
+				break;
+			}
+					
+			m_data.FaceDirection( direction, true );
+
+			if ( dist < speed * remainingDeltaTime )
+			{
+				// going to get there this frame
+				remainingDeltaTime -= dist/speed;
+				position = m_targetPos;
+
+				if ( m_path != null && m_pathPointNext > 0 )
+				{
+					// Reached pathfinding point, so go to next pathfinding point
+					m_pathPointNext++;
+					if ( m_pathPointNext >= m_path.Length )
+					{
+						// End of pathfinding, but may have waypoints to go to next
+						reachedTarget = m_data.Waypoints.Count == 0;
+						m_path = null;
+						m_pathPointNext = -1;
+					}					
+				}
+				else if ( m_data.Waypoints.Count > 0 )
+				{
+					// Reached waypoint, so go to next waypoint
+					m_data.Waypoints.RemoveAt(0);
+					reachedTarget = m_data.Waypoints.Count == 0;
+				}
+				else 
+				{
+					reachedTarget = true;
+				}
+			}
+			else
+			{
+				position += direction * speed * remainingDeltaTime;
+				remainingDeltaTime -= Time.deltaTime;
+			}
+		}
+
+		// Finally, set the position! yaay!
+		m_data.SetPosition(position);
+		
+		if ( reachedTarget )
+		{		
+			m_walking = false;
+			OnAnimStateChange();
+			if ( m_data.GetFaceAfterWalk() != eFace.None ) 
+				m_data.FaceBG(m_data.GetFaceAfterWalk());
+			m_path = null;
+			m_pathPointNext = -1;
+		}
+
+		return reachedTarget == false;
 	}
 
 	void LateUpdate()
@@ -489,16 +771,16 @@ public class CharacterComponent : MonoBehaviour
 	#region Public Functions
 
 	
-	public void PlayAnimation(string animName, bool pauseAtEnd = false )
+	public void PlayAnimation(string animName)
 	{
-		m_pauseAnimAtEnd = pauseAtEnd;
 		PlayAnimInternal(animName,true);
-		SetState(Character.eState.Animate);
+		m_animating = true;
+		OnAnimStateChange();
 	}
 
 	public void PauseAnimation()
 	{
-		if ( m_state == Character.eState.Animate )
+		if ( m_state == eState.Animate )
 		{
 			m_spriteAnimator.Pause();
 		}
@@ -506,8 +788,7 @@ public class CharacterComponent : MonoBehaviour
 
 	public void ResumeAnimation()
 	{
-		m_pauseAnimAtEnd = false;
-		if ( m_state == Character.eState.Animate )
+		if ( m_state == eState.Animate )
 		{
 			m_spriteAnimator.Resume();
 		}
@@ -515,12 +796,14 @@ public class CharacterComponent : MonoBehaviour
 
 	public void StopAnimation()
 	{
-		m_pauseAnimAtEnd = false;
-		if ( m_state == Character.eState.Animate )
-			SetState(Character.eState.Idle);
+		// If transitioning to something already, set that as current anim so we can transition out		
+		if ( string.IsNullOrEmpty(m_transitioningToAnim) == false )
+			OnTransitionAnimComplete();
+		m_animating = false;
+		OnAnimStateChange();
 	}
 
-	public void OnAnimationChanged( Character.eState animState )
+	public void OnAnimationChanged( eState animState )
 	{		
 		// If current state has changed anim, then change the current state anim immediately
 		if ( animState == m_state )
@@ -528,17 +811,18 @@ public class CharacterComponent : MonoBehaviour
 			switch (m_state) 
 			{
 
-				case Character.eState.Idle:
+				case eState.Idle:
 				{
 					// Play idle anim
 					PlayAnimInternal(m_data.AnimIdle, true);
 				} break;
-				case Character.eState.Walk:
+				case eState.Walk:
 				{
 					// Play walk anim
-					PlayAnimInternal(m_data.AnimWalk, false);
+					if ( m_playWalkAnim )
+						PlayAnimInternal(m_data.AnimWalk, false);
 				} break;
-				case Character.eState.Talk:
+				case eState.Talk:
 				{
 					// Play talk anim
 					PlayAnimInternal(m_data.AnimTalk, true);
@@ -556,7 +840,7 @@ public class CharacterComponent : MonoBehaviour
 	
 	public void OnClickableColliderIdChanged()
 	{
-		if ( m_clickableColliders == null )
+		if ( m_clickableColliders == null || m_data.UseSpriteAsHotspot )
 			return;
 		for ( int i = 0; i < m_clickableColliders.Length; ++i )
 		{
@@ -579,16 +863,15 @@ public class CharacterComponent : MonoBehaviour
 		m_targetPos = m_data.GetPosition();
 		m_targetEndPos = m_targetPos;
 		m_turningToWalk = false;
-		if ( GetIsWalking() )
-		{
-			SetState(Character.eState.Idle);
-		}
+		m_playWalkAnim = true;
+		m_walking = false;
+		OnAnimStateChange();
 	}
 
 	// Stops the chracter moving, and skips it ot the target position
 	public void SkipWalk()
 	{
-		if ( GetIsWalking() )
+		if ( Walking )
 		{
 			// Skip to end position
 			if ( m_path == null )
@@ -606,20 +889,10 @@ public class CharacterComponent : MonoBehaviour
 
 			m_path = null;
 			m_pathPointNext = -1;
-			SetState(Character.eState.Idle);
+			m_walking = false;
+			OnAnimStateChange();
 		}
 
-	}
-
-	public bool GetIsWalking()
-	{
-		return GetState() == Character.eState.Walk;
-	}
-
-	/// Since player can be takling while walking/animating, this check only returns true if actually playing talk anim (in talk state). For ANY time talking, use charactredata.Talking property.
-	public bool GetInTalkState()
-	{
-		return GetState() == Character.eState.Talk;
 	}
 
 	// updates the facing direction and changes the anim to the correct one.
@@ -655,21 +928,36 @@ public class CharacterComponent : MonoBehaviour
 		}
 	}
 
-	public void WalkTo( Vector2 pos, bool anywhere = false )
+	public void WalkTo( Vector2 pos, bool anywhere, bool playWalkAnim )
 	{
-		if ( m_state == Character.eState.Walk && m_targetEndPos == pos )
-			return; // Already walking there.
-		
-		if ( anywhere == false && PowerQuest.Get.Pathfinder.GetValid() )
+		if ( m_state == eState.Walk && m_targetEndPos == pos && m_playWalkAnim == playWalkAnim)
+			return; // Already walking there. Should probably also check if "anywhere" flag has changed, but that's an edge case
+			
+		m_playWalkAnim = playWalkAnim;
+
+		Pathfinder pathfinder = PowerQuest.Get.Pathfinder;
+		if ( anywhere == false && pathfinder.GetValid() )
 		{
+			// Update which characters collision should be enabled in this pathfinder
+			foreach ( Character character in PowerQuest.Get.GetCharacters() )
+			{		
+				if ( character.Instance != null )
+				{
+					if ( GetData().Solid && character != GetData() && character.Solid && character.Room == PowerQuest.Get.GetCurrentRoom() ) // other character's solid, and not this player
+						pathfinder.EnableObstacle(character.Instance.transform);
+					else 
+						pathfinder.DisableObstacle(character.Instance.transform);				
+				}
+			}
+
 			// Find closest Pos that's navigatable
-			if ( PowerQuest.Get.Pathfinder.IsPointInArea(pos) == false )
-				pos = PowerQuest.Get.Pathfinder.GetClosestPointToArea(pos);
+			if ( pathfinder.IsPointInArea(pos) == false )
+				pos = pathfinder.GetClosestPointToArea(pos);
 						
 			m_targetPos = pos;
 			m_targetEndPos = m_targetPos;
 
-			Vector2[] path = PowerQuest.Get.Pathfinder.FindPath(transform.position, pos);
+			Vector2[] path = pathfinder.FindPath(transform.position, pos);
 
 			if ( path != null && path.Length > 1 )
 			{
@@ -692,15 +980,14 @@ public class CharacterComponent : MonoBehaviour
 	public void StartSay(string text, int id)
 	{
 		m_currLineId = id;
-		if ( m_state != Character.eState.Animate && m_state != Character.eState.Talk )
-			SetState(Character.eState.Talk);
+		m_talking = true;
+		OnAnimStateChange();
 	}
 	public void EndSay()
-	{
-		
+	{		
 		m_currLineId = -1;
-		if ( m_state == Character.eState.Talk )
-			SetState(Character.eState.Idle);
+		m_talking = false;
+		OnAnimStateChange();
 	}
 
 	public Vector2 GetTextPosition()
@@ -730,7 +1017,7 @@ public class CharacterComponent : MonoBehaviour
 
 	public void OnSkipCutscene()
 	{
-		if ( m_state == Character.eState.Walk &&  m_targetPos != m_data.GetPosition() && m_targetPos != Vector2.zero )
+		if ( m_state == eState.Walk &&  m_targetPos != m_data.GetPosition() && m_targetPos != Vector2.zero )
 		{
 			m_data.SetPosition(m_targetPos); 
 			m_targetPos = Vector2.zero;
@@ -752,22 +1039,24 @@ public class CharacterComponent : MonoBehaviour
 			return;		
 		m_targetPos = pos;
 
-		if ( m_state != Character.eState.Walk )
-		{
-			SetState(Character.eState.Walk);
-		}
+		m_walking = true;
+		OnAnimStateChange();
 
-		m_data.FaceDirection( toPos.normalized );
+		if ( Animating == false && m_playWalkAnim )
+		{
+			m_data.FaceDirection( toPos.normalized );
 
-		if ( CheckTargetDirectionWillChangeAnim() ) // check if the walk anim will change. if it won't, just walk immediately without turning to face first.
-		{
-			// If not instantly at correct position, go back to idle anim, and rotate
-			m_turningToWalk = true;
-			PlayAnimInternal(m_data.AnimIdle);
-		}
-		else 
-		{
-			m_data.SetFaceDirection(m_data.GetTargetFaceDirection()); // Not turning to face, so assume we've reached the target (due to anim frames we may not have actually)
+			if ( CheckTargetDirectionWillChangeAnim() ) // check if the walk anim will change. if it won't, just walk immediately without turning to face first.
+			{
+				// If not instantly at correct position, go back to idle anim, and rotate
+				m_turningToWalk = true;
+				PlayAnimInternal(m_data.AnimIdle);
+			}
+			else 
+			{
+				m_data.SetFaceDirection(m_data.GetTargetFaceDirection()); // Not turning to face, so assume we've reached the target (due to anim frames we may not have actually)
+			}
+			
 		}
 	}
 
@@ -778,35 +1067,39 @@ public class CharacterComponent : MonoBehaviour
 		string targetAnimationName = FindDirectionalAnimationName( m_data.GetTargetFaceDirection(), m_currAnimBaseName, out targetAnimationFlipped );
 		return ( targetAnimationFlipped != Flipped() || targetAnimationName != m_spriteAnimator.ClipName );
 	}
-
-	void SetState(Character.eState state)
+			
+	void SetState(eState state)
 	{	
-		Character.eState oldState = m_state;
+		eState oldState = m_state;
 		OnExitState(oldState, state);
 		m_state = state;
 		OnEnterState(oldState, state);
 	}
 
-	void OnEnterState( Character.eState oldState, Character.eState newState )
+	void OnEnterState( eState oldState, eState newState )
 	{
 		switch (newState) 
 		{
-			case Character.eState.Idle:
+			case eState.Idle:
 			{
 				if ( m_playIdleDelayFrames <= 0 )
 				{
 					// Play idle anim
-					//if ( string.IsNullOrEmpty(m_transitionAnim) || m_transitionAnim.StartsWith(m_data.AnimIdle) == false ) // Don't play again if alteady transitioning to it
 					PlayAnimInternal(m_data.AnimIdle);
 				}
 
 			} break;
-			case Character.eState.Walk:
+			case eState.Walk:
 			{
 				// Play walk anim
-				PlayAnimInternal(m_data.AnimWalk);
+				if ( m_playWalkAnim )
+				{
+					PlayAnimInternal(m_data.AnimWalk);
+					// Clicking multiple times can stop then start the walk anim again, this should stop it re-starting the animation
+					m_playIdleDelayFrames = 2;
+				}
 			} break;
-			case Character.eState.Talk:
+			case eState.Talk:
 			{
 				// Play talk anim
 				//if ( string.IsNullOrEmpty(m_transitionAnim) || m_transitionAnim.StartsWith(m_data.AnimTalk) == false ) // Don't play again if alteady transitioning to it
@@ -818,7 +1111,7 @@ public class CharacterComponent : MonoBehaviour
 			        m_spriteAnimator.Pause();
 			    }
 			} break;
-			case Character.eState.Animate:
+			case eState.Animate:
 			{
 				m_playIdleDelayFrames = 2;
 			} break;
@@ -827,17 +1120,17 @@ public class CharacterComponent : MonoBehaviour
 		}
 	}
 
-	void OnExitState( Character.eState oldState, Character.eState newState )
+	void OnExitState( eState oldState, eState newState )
 	{
 		switch (oldState) 
 		{
-			case Character.eState.Idle:
+			case eState.Idle:
 			{				
 			} break;
-			case Character.eState.Walk:
+			case eState.Walk:
 			{
 			} break;
-			case Character.eState.Talk:
+			case eState.Talk:
 			{
 			} break;
 			default: break;
@@ -908,11 +1201,11 @@ public class CharacterComponent : MonoBehaviour
 				clip = FindDirectionalAnimation( animName, out flip );
 				m_transitionAnim = clip.name; 
 			}
-			else if ( m_loopStartTime > 0 )
+			else if ( m_data.LoopStartTime > 0 )
 			{
 				// Transition out from looping anim
-				if ( ignoreTransitionLoopTime == false && m_loopEndTime > m_loopStartTime )
-					m_spriteAnimator.NormalizedTime = m_loopEndTime;
+				if ( ignoreTransitionLoopTime == false && m_data.LoopEndTime > m_data.LoopStartTime )
+					m_spriteAnimator.NormalizedTime = m_data.LoopEndTime;
 				
 				m_transitioningFromAnim = oldClipName;
 				m_transitionAnim = oldClipName;
@@ -933,8 +1226,8 @@ public class CharacterComponent : MonoBehaviour
 			if ( oldClipName != clip.name )
 			{
 				//Debug.Log("Starting: "+ clip.name);
-				m_loopStartTime = -1;
-				m_loopEndTime = -1;
+				m_data.LoopStartTime = -1;
+				m_data.LoopEndTime = -1;
 				m_animChangeTime = 0;
 				if ( fromStart || m_spriteAnimator.Clip == null  )
 				{
@@ -1250,15 +1543,15 @@ public class CharacterComponent : MonoBehaviour
 	{
 		if ( m_spriteAnimator.ClipName == m_transitionAnim )
 			return; // don't loop when transitioning
-		m_loopStartTime = m_spriteAnimator.NormalizedTime;
+		m_data.LoopStartTime = m_spriteAnimator.NormalizedTime;
 	}
 
 	void AnimLoopEnd()
 	{
 		if ( m_spriteAnimator.ClipName == m_transitionAnim )
 			return; // don't loop when transitioning
-		m_loopEndTime = m_spriteAnimator.NormalizedTime;
-		m_spriteAnimator.NormalizedTime = m_loopStartTime;		
+		m_data.LoopEndTime = m_spriteAnimator.NormalizedTime;
+		m_spriteAnimator.NormalizedTime = m_data.LoopStartTime;		
 	}
 	
 	/// Offset character from node 1 to node 2	
@@ -1313,13 +1606,14 @@ public class CharacterComponent : MonoBehaviour
 			if ( m_mouthNode == null )				
 				useMouth = false;		
 
-			// Note: idle anim needs restarting
-			m_spriteAnimator.Play( m_spriteAnimator.GetCurrentAnimation() );
+			// Note: idle anim needs restarting			
+			if ( m_animating == false ) // note: this is necessary when loading a save game to start anims at correct time (we don't want to restart), and order of ops makes this fiddly. May result in 1st mouth anim not playing if anim is overriden?
+				m_spriteAnimator.Play( m_spriteAnimator.GetCurrentAnimation() );
 		}
 
 		// Check if playing talk anim, or showing dialog & have a mouth frame
 		// the reason we don't check for useMouth, is so we can support lipsync without seperate mouth. 
-		if ( GetInTalkState() || (useMouth && m_data.Talking)) 
+		if ( Talking ) 
 		{
 			//  Check if should  hide mouth this frame			
 			if ( useMouth && m_mouthNode.GetPositionRaw(0) == Vector2.zero )

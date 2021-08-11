@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System.Reflection;
@@ -181,6 +181,13 @@ public class QuestAutoCompletableAttribute : System.Attribute
 public class QuestPlayFromFunctionAttribute : System.Attribute
 {
 	public QuestPlayFromFunctionAttribute(){}
+}
+
+// Attribute used to mark string fields that should be added to the text system to support localization. Eg: [QuestLocalize, SerializeField] string m_description;
+[AttributeUsage(AttributeTargets.Field)]
+public class QuestLocalizeAttribute : System.Attribute
+{
+	public QuestLocalizeAttribute(){}
 }
 
 }

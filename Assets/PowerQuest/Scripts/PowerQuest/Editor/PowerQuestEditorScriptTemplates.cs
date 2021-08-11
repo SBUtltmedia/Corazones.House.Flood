@@ -57,7 +57,7 @@ public class Dialog#NAME# : DialogTreeScript<Dialog#NAME#>
 {
 	public IEnumerator OnStart()
 	{
-		yield return E.ConsumeEvent;
+		yield return E.Break;
 	}
 
 	public IEnumerator OnStop()

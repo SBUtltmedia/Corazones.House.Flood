@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
 using PowerTools;
@@ -190,7 +190,7 @@ public class PropComponent : MonoBehaviour
 		{
 			m_sprite.sortingOrder = -Mathf.RoundToInt((m_data.Position.y + m_data.Baseline)*10.0f);
 		}
-		if ( m_overrideAnimPlaying  && PowerQuest.Get.GetSkipCutscene() && m_spriteAnimator.GetCurrentAnimation().isLooping == false ) 
+		if ( m_overrideAnimPlaying  && PowerQuest.Get.GetSkippingCutscene() && m_spriteAnimator.GetCurrentAnimation().isLooping == false ) 
 			StopAnimation();
 
 	}
@@ -460,7 +460,7 @@ public partial class Prop : IQuestClickable, IProp, IQuestScriptable
 		return null;
 	}
 
-	public void PlayAnimationBG(string animName) { if ( m_instance != null && PowerQuest.Get.GetSkipCutscene() == false ) m_instance.PlayAnimation(animName); }
+	public void PlayAnimationBG(string animName) { if ( m_instance != null && PowerQuest.Get.GetSkippingCutscene() == false ) m_instance.PlayAnimation(animName); }
 	public void PauseAnimation() { if ( m_instance != null ) m_instance.PauseAnimation(); }
 	public void ResumeAnimation() { if ( m_instance != null ) m_instance.ResumeAnimation(); }
 
@@ -539,7 +539,7 @@ public partial class Prop : IQuestClickable, IProp, IQuestScriptable
 			//m_animation = name;
 		m_scriptName = name;	
 	}
-
+		
 	/// Fade the sprite's alpha
 	public Coroutine Fade(float start, float end, float duration ) { return PowerQuest.Get.StartCoroutine(CoroutineFade(start, end, duration)); }
 	/// Fade the sprite's alpha (non-blocking)
@@ -550,17 +550,25 @@ public partial class Prop : IQuestClickable, IProp, IQuestScriptable
 
 	IEnumerator CoroutinePlayAnimation(string animName) 
 	{
-		if ( PowerQuest.Get.GetSkipCutscene() )
-			yield break;
 		
 		if ( m_instance == null ) yield break;
 		m_instance.PlayAnimation(animName);
-		while ( m_instance != null && m_instance.GetAnimating() && PowerQuest.Get.GetSkipCutscene() == false )
+		while ( m_instance != null && m_instance.GetAnimating() && PowerQuest.Get.GetSkippingCutscene() == false )
 		{				
 			yield return new WaitForEndOfFrame();
 		}
-		if ( PowerQuest.Get.GetSkipCutscene() && m_instance != null )
+		if ( PowerQuest.Get.GetSkippingCutscene() && m_instance != null )
+		{
+			SpriteAnim animComponent = m_instance.GetComponent<SpriteAnim>();
+			if ( animComponent != null )
+			{
+				// Skip to "end" of animation, and force update so that any animation changes are applied
+				animComponent.NormalizedTime = 1;
+				m_instance.GetComponent<Animator>().Update(0);
+			}
+
 			m_instance.StopAnimation();
+		}
 		yield break;
 	}
 
@@ -568,7 +576,7 @@ public partial class Prop : IQuestClickable, IProp, IQuestScriptable
 	#if ( UNITY_SWITCH == false )
 	IEnumerator CoroutinePlayVideo(float skippableAfterTime = -1) 
 	{
-		if ( PowerQuest.Get.GetSkipCutscene() )
+		if ( PowerQuest.Get.GetSkippingCutscene() )
 			yield break;
 		
 		if ( m_instance == null ) yield break;
@@ -595,7 +603,7 @@ public partial class Prop : IQuestClickable, IProp, IQuestScriptable
 	IEnumerator CoroutineMoveTo(Vector2 toPos, float speed)
 	{
 		Vector2 propPos = Position;
-		while((propPos - toPos).sqrMagnitude > float.Epsilon && PowerQuest.Get.GetSkipCutscene() == false)
+		while((propPos - toPos).sqrMagnitude > float.Epsilon && PowerQuest.Get.GetSkippingCutscene() == false)
 		{			
 			if ( SystemTime.Paused == false )			
 				propPos = Vector2.MoveTowards(propPos, toPos, speed * Time.deltaTime);
@@ -617,7 +625,7 @@ public partial class Prop : IQuestClickable, IProp, IQuestScriptable
 		float alpha = start;
 		System.Array.ForEach( sprites, sprite => { sprite.color = sprite.color.WithAlpha( alpha ); });
 		System.Array.ForEach( texts, text => { text.color = text.color.WithAlpha( alpha ); });
-		while ( time < duration && PowerQuest.Get.GetSkipCutscene() == false )
+		while ( time < duration && PowerQuest.Get.GetSkippingCutscene() == false )
 		{
 			yield return new WaitForEndOfFrame();
 					
@@ -638,7 +646,7 @@ public partial class Prop : IQuestClickable, IProp, IQuestScriptable
 
 	IEnumerator CoroutineWaitForAnimTrigger(string triggerName)
 	{
-		if ( PowerQuest.Get.GetSkipCutscene() == false )
+		if ( PowerQuest.Get.GetSkippingCutscene() == false )
 		{
 			bool hit = false;
 			AddAnimationTrigger(triggerName,true,()=>hit=true);

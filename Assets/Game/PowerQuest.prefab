@@ -63,6 +63,7 @@ MonoBehaviour:
   m_sayTextAutoAdvance: 1
   m_displayTextAutoAdvance: 0
   m_textNoSkipTime: 0.25
+  m_stopWalkingToTalk: 1
   m_enableUse: 1
   m_enableLook: 1
   m_enableInventory: 1
@@ -92,7 +93,8 @@ MonoBehaviour:
   - {fileID: 114107578643181592, guid: 815776d2d5a9623498c61578ffc4c1cc, type: 3}
   - {fileID: 6691753714027150367, guid: 7c0ae79c116ab474698aa2d37b3a1399, type: 3}
   - {fileID: 3733532514121063368, guid: 23fdac69010168444a76818029d7630a, type: 3}
-  - {fileID: 707601457055817731, guid: 44651c51f21780a4ca86fbfaede30fb2, type: 3}
+  - {fileID: 6199295170388129749, guid: f671150f73daf7b419304d6b618c2fe1, type: 3}
+  - {fileID: 1848077160180723540, guid: 3fcbf844c653b454489c40dbac3c87e2, type: 3}
   m_characterPrefabs:
   - {fileID: 114953134120639602, guid: b4910caf4195aeb45895069ad277b9fd, type: 3}
   - {fileID: 6035720155002498351, guid: 6ac17c85ae667984dbc3db0053003a56, type: 3}
@@ -132,5 +134,5 @@ MonoBehaviour:
   - {fileID: 4800000, guid: d98a9fb29ffd9b047b8b28042595d236, type: 3}
   - {fileID: 4800000, guid: a2c3f6022054c654ea6aeb84a997cda4, type: 3}
   - {fileID: 4800000, guid: 553637da87459c4428e8af106c8e49fd, type: 3}
-  m_version: 13004
+  m_version: 14006
   m_newVersion: 12004

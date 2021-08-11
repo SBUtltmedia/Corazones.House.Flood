@@ -49,21 +49,23 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_data:
-    m_description: Bob
+    m_description: New Character
     m_cursor: 
-    m_room: Hardware
-    m_position: {x: 350, y: -45}
-    m_faceDirection: 0
+    m_room: 
+    m_position: {x: 0, y: 0}
+    m_faceDirection: 2
     m_clickable: 1
     m_visible: 1
-    m_moveable: 1
     m_inventory: []
-    m_walkSpeed: {x: 200, y: 200}
+    m_walkSpeed: {x: 50, y: 50}
+    m_moveable: 1
+    m_solid: 0
+    m_solidSize: {x: 20, y: 4}
     m_turnBeforeWalking: 1
     m_turnBeforeFacing: 1
     m_turnSpeedFPS: 12
     m_adjustSpeedWithScaling: 1
-    m_textColour: {r: 0.9716981, g: 0.050418302, b: 0.95898956, a: 1}
+    m_textColour: {r: 1, g: 1, b: 1, a: 1}
     m_animIdle: Idle
     m_animWalk: Walk
     m_animTalk: Talk
@@ -72,22 +74,16 @@ MonoBehaviour:
     m_useRegionScaling: 1
     m_LipSyncEnabled: 0
     m_footstepSound: 
-    m_baseline: -15
-    m_walkToPoint: {x: 0, y: 135}
-    m_lookAtPoint: {x: 0, y: 135}
-    m_scriptName: Neighbor1
-    m_scriptClass: CharacterNeighbor1
+    m_useSpriteAsHotspot: 0
+    m_baseline: 0
+    m_walkToPoint: {x: 0, y: 0}
+    m_lookAtPoint: {x: 0, y: 0}
+    m_scriptName: New
+    m_scriptClass: CharacterNew
   m_clickableColliders: []
   m_turnAnims: []
   m_transitionAnims: []
-  m_animations:
-  - {fileID: 7400000, guid: e7697ac11ec61ef48a49193cb93b497b, type: 2}
-  - {fileID: 7400000, guid: 3af50c10229a6ac43a31b37cbafe71fe, type: 2}
-  - {fileID: 7400000, guid: c11802fac4c77174ebf8322bb19a24a9, type: 2}
-  - {fileID: 7400000, guid: 1ac3269f329b7014eaf654a4a88a737f, type: 2}
-  - {fileID: 7400000, guid: a1f8e328efc4a9542bf0c14808e855ba, type: 2}
-  - {fileID: 7400000, guid: 90ec6b2d7d012c743936b91bb84347ce, type: 2}
-  - {fileID: 7400000, guid: 0d00693dffb9e854a8fceb7fe0ac16a4, type: 2}
+  m_animations: []
 --- !u!60 &6211616764677334856
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -180,9 +176,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 946a4cd223a0dda45a4eb9c91420fadd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_tint: {r: 0.21542534, g: 0.20914915, b: 0.9433962, a: 0}
+  m_tint: {r: 1, g: 1, b: 1, a: 0}
   m_outline: {r: 1, g: 1, b: 1, a: 0}
-  m_offset: {x: 0, y: 135}
+  m_offset: {x: 0, y: 0}
   m_shaderOverride: {fileID: 0}
 --- !u!95 &302015314446112285
 Animator:

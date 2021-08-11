@@ -53,26 +53,11 @@ MonoBehaviour:
     m_animationNonClickable: Idle
     m_animationUseInv: UseInv
     m_animationOverGui: Idle
+    m_animationWait: Wait
     m_inventoryOutlineColor: {r: 1, g: 1, b: 1, a: 0}
     m_hideWhenBlocking: 1
-  m_inventoryOverrideAnims:
-  - Left
-  - Right
-  - Up
-  - Down
-  m_animations:
-  - {fileID: 7400000, guid: fcf2e95a9b322974890f824ab4f8e169, type: 2}
-  - {fileID: 7400000, guid: 3c85efe335b739e4ab098b7f96ea16fb, type: 2}
-  - {fileID: 7400000, guid: 8a260c215fb6ca54abe91c10fafa7748, type: 2}
-  - {fileID: 7400000, guid: 5854156a14f589b488edff651fd4f97f, type: 2}
-  - {fileID: 7400000, guid: ca5b85d41a64e7b40b13f37be16dd668, type: 2}
-  - {fileID: 7400000, guid: fde41821bf8d81b4c9f2207c571646a0, type: 2}
-  - {fileID: 7400000, guid: 3ffef1a518fd64e46b3f117e543b59be, type: 2}
-  - {fileID: 7400000, guid: 845ce9554bbe237429d3a5d89542f7cc, type: 2}
-  - {fileID: 7400000, guid: 81618e55d6d350e4d883f3a4a8bd7f71, type: 2}
-  - {fileID: 7400000, guid: b6dafc6949906134fa1671e55aa4d86d, type: 2}
-  - {fileID: 7400000, guid: a47849998f4a4aa439231c08ec18dc2b, type: 2}
-  - {fileID: 7400000, guid: e99992cc89f7b124d9cde616c2113ee2, type: 2}
+  m_inventoryOverrideAnims: []
+  m_animations: []
 --- !u!95 &95000014099380940
 Animator:
   serializedVersion: 3

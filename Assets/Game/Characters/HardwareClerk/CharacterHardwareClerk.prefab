@@ -49,21 +49,23 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_data:
-    m_description: Hardware Clerk
-    m_cursor: Talk
-    m_room: Hardware
-    m_position: {x: 24, y: 6}
-    m_faceDirection: 0
+    m_description: New Character
+    m_cursor: 
+    m_room: 
+    m_position: {x: 0, y: 0}
+    m_faceDirection: 2
     m_clickable: 1
     m_visible: 1
-    m_moveable: 1
     m_inventory: []
-    m_walkSpeed: {x: 80, y: 60}
+    m_walkSpeed: {x: 50, y: 50}
+    m_moveable: 1
+    m_solid: 0
+    m_solidSize: {x: 20, y: 4}
     m_turnBeforeWalking: 1
     m_turnBeforeFacing: 1
     m_turnSpeedFPS: 12
     m_adjustSpeedWithScaling: 1
-    m_textColour: {r: 0.21568629, g: 0.5803922, b: 0.43137258, a: 1}
+    m_textColour: {r: 1, g: 1, b: 1, a: 1}
     m_animIdle: Idle
     m_animWalk: Walk
     m_animTalk: Talk
@@ -72,22 +74,16 @@ MonoBehaviour:
     m_useRegionScaling: 1
     m_LipSyncEnabled: 0
     m_footstepSound: 
+    m_useSpriteAsHotspot: 0
     m_baseline: 0
-    m_walkToPoint: {x: -34, y: -2}
-    m_lookAtPoint: {x: 0, y: -2}
-    m_scriptName: HardwareClerk
-    m_scriptClass: CharacterHardwareClerk
+    m_walkToPoint: {x: 0, y: 0}
+    m_lookAtPoint: {x: 0, y: 0}
+    m_scriptName: New
+    m_scriptClass: CharacterNew
   m_clickableColliders: []
   m_turnAnims: []
   m_transitionAnims: []
-  m_animations:
-  - {fileID: 7400000, guid: 2798b7acc99b7204eb58b3d7f618aa00, type: 2}
-  - {fileID: 7400000, guid: 6863a6854a465c54fbb41eb5c7a26fbe, type: 2}
-  - {fileID: 7400000, guid: 5a1f478790248754dae832cc648accac, type: 2}
-  - {fileID: 7400000, guid: 2fa3b95e75b87a84e88d01decc8727e8, type: 2}
-  - {fileID: 7400000, guid: 92d0c25cd8050b84dbcabc7a5b223d77, type: 2}
-  - {fileID: 7400000, guid: 0f69390c55193a842968beef3fca19b7, type: 2}
-  - {fileID: 7400000, guid: f3d8e3fb90e7ef5478393df9c025fa95, type: 2}
+  m_animations: []
 --- !u!60 &60498109293141074
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -182,7 +178,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_tint: {r: 1, g: 1, b: 1, a: 0}
   m_outline: {r: 1, g: 1, b: 1, a: 0}
-  m_offset: {x: 0, y: 30}
+  m_offset: {x: 0, y: 0}
   m_shaderOverride: {fileID: 0}
 --- !u!95 &95015902400815468
 Animator:

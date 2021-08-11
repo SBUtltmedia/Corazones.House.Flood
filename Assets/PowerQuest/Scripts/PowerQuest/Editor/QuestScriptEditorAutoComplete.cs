@@ -26,6 +26,7 @@ public partial class QuestScriptEditor
 			"Globals","Audio","Camera","Settings",
 			"FaceClicked","WalkToClicked", "End", "Return", "Consume",
 			"Display: ", "DisplayBG: ","Section: ",
+			"bool","int","float","string","Vector2","enum","true","false","if","else","while","for","switch","case","default","break","continue","new","public",
 		};
 	static readonly string[] AC_KEYWORDS_R = { "Current", "Previous", "EnteredFromEditor" };
 	static readonly string[] AC_KEYWORDS_C = { "Display(","DisplayBG(","Player","Plr" };
@@ -104,11 +105,11 @@ public partial class QuestScriptEditor
 		new Regex( @"^e[A-Z]\w*\.(\w*)$", RegexOptions.Compiled ), 	// eg: eStateWindow.??
 		new Regex( @"^[CRI]\.\w+\.Script\.(\w*)$", RegexOptions.Compiled | RegexOptions.IgnoreCase ), 		// eg: C.Fred.Script. // eg: R.Kitchen.Script. // eg: I.Bucket.Script.
 
-		new Regex( @"^\s*(?:C\.\w+|Plr)\.(?:(?:AnimIdle|AnimTalk|AnimWalk|Pose|NextPose)\s*=\s*|PlayAnimation(?:BG)?\(\s*)(""?\w*)$", RegexOptions.Compiled | RegexOptions.IgnoreCase ), // eg: C.Fred.AnimIdle = " // eg: C.Fred.PlayAnimation("
+		new Regex( @"^\s*(?:C\.\w+|Plr)\.(?:(?:AnimIdle|AnimTalk|AnimWalk|Pose|NextPose|Animation)\s*=\s*|PlayAnimation(?:BG)?\(\s*)(""?\w*)$", RegexOptions.Compiled | RegexOptions.IgnoreCase ), // eg: C.Fred.AnimIdle = " // eg: C.Fred.PlayAnimation("
 		new Regex( @"^\s*P\.\w+\.(?:Animation\s*=\s*|PlayAnimation(?:BG)?\(\s*)(""?\w*)$", RegexOptions.Compiled | RegexOptions.IgnoreCase ), // eg: P.Door.Animation = " // eg: P.Door.PlayAnimation("
 		new Regex( @"^\s*Audio\.Play\w*\(\s*(""?\w*)$", RegexOptions.Compiled | RegexOptions.IgnoreCase ), // eg: Audio.Play("
 	};
-
+	
 	// Context's that should list functions in their class, rather than a custom list (like the names of characters)
 	static readonly bool[] AC_CONTEXT_FUNCTION = 
 	{
@@ -146,7 +147,7 @@ public partial class QuestScriptEditor
 	};
  
 	static readonly Regex AC_IGNORELINE_REGEX = new Regex( @"^\s*(\w+:)|(//)|(/\*)", RegexOptions.Compiled );// Ignore dialog lines, and comments for autocomplete	
-	static readonly char[] AC_STARTSEQCHARS = {'\n','\r','\t',' ','('};
+	static readonly char[] AC_STARTSEQCHARS = {'\n','\r','\t',' ','(',','};
 	static readonly char[] AC_STARTSEQCHARS_FULLLINE = {'\n','\r' }; // Some context are checked against whole line, rather than previous 'space'
 
 	#endregion

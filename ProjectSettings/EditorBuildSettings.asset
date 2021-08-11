@@ -14,13 +14,16 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Game/Rooms/Hardware/SceneRoomHardware.unity
     guid: edfa9de17bb00e44699be4e1a1eac4ae
+  - enabled: 0
+    path: 
+    guid: 00000000000000000000000000000000
+  - enabled: 0
+    path: 
+    guid: 00000000000000000000000000000000
+  - enabled: 0
+    path: 
+    guid: 00000000000000000000000000000000
   - enabled: 1
-    path: Assets/Game/Rooms/Testroom/SceneRoomTestroom.unity
-    guid: b406ac59fce6ea6478d1d76b8155ff97
-  - enabled: 1
-    path: Assets/Game/Rooms/ProgressScreen/SceneRoomProgressScreen.unity
-    guid: 82b12d31f45746b43ab11bbb0683d20f
-  - enabled: 1
-    path: Assets/Game/Rooms/Cutscene/SceneRoomCutscene.unity
-    guid: 08659064ecd544e4ab6b722f71057e99
+    path: Assets/Game/Rooms/InfoScreen/SceneRoomInfoScreen.unity
+    guid: c449035d526763d498a3a58cace0f60c
   m_configObjects: {}

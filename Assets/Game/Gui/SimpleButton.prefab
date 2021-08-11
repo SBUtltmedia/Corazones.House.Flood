@@ -113,10 +113,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 99f5801e9ab1722449b271233da6c14c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_text: Click Me
+  m_text: 
   m_localize: 0
-  m_sortingLayer: Gui
-  m_orderInLayer: 2
+  m_sortingLayer: Default
+  m_orderInLayer: 0
   m_wrapWidth: 0
   m_truncate: 0
   m_wrapUniformLineWidth: 0
@@ -124,12 +124,11 @@ MonoBehaviour:
   m_keepOnScreen: 0
   m_shaderOverride: {fileID: 0}
   m_outline:
-    m_directions: 128
+    m_directions: 0
     m_width: 1
-    m_color: {r: 0.13333334, g: 0.13333334, b: 0.13333334, a: 1}
-  m_unlocalizedText: Click Me
-  m_outlineMeshes:
-  - {fileID: 0}
+    m_color: {r: 0, g: 0, b: 0, a: 1}
+  m_unlocalizedText: 
+  m_outlineMeshes: []
 --- !u!1 &3619032919934167726
 GameObject:
   m_ObjectHideFlags: 0
@@ -247,13 +246,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: bcb1416382639bf44a88c6a84bbf158c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_containX:
-  - {fileID: 444776554}
-  - {fileID: 8750927234830495152}
-  m_containY:
-  - {fileID: 8750927234830495152}
-  - {fileID: 444776554}
-  m_padding: {x: 2, y: 1}
+  m_containX: []
+  m_containY: []
+  m_padding: {x: 0, y: 0}
 --- !u!1 &7309765103103915875
 GameObject:
   m_ObjectHideFlags: 0
